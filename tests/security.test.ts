@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { AppError, describeError, runAction } from '@/lib/errors'
 import { redact } from '@/lib/redact'
 import {
   generateEventCode,
@@ -123,5 +124,96 @@ describe('rate limiter', () => {
   it('tracks keys independently', () => {
     expect(rateLimit({ key: 'a', limit: 1, windowMs: 1000, now: 1_000 }).allowed).toBe(true)
     expect(rateLimit({ key: 'b', limit: 1, windowMs: 1000, now: 1_000 }).allowed).toBe(true)
+  })
+})
+
+describe('action error reporting', () => {
+  /** Shaped like a postgres.js error: a query the server itself rejected. */
+  function postgresError(overrides: Record<string, unknown> = {}): Error {
+    return Object.assign(new Error('relation "guilds" does not exist'), {
+      name: 'PostgresError',
+      code: '42P01',
+      severity: 'ERROR',
+      routine: 'parserOpenTable',
+      ...overrides,
+    })
+  }
+
+  it('names the Postgres code, table and constraint that failed', () => {
+    const report = describeError(
+      postgresError({ code: '23505', table_name: 'characters', constraint_name: 'characters_guild_name_key' }),
+    )
+    expect(report.errorCode).toBe('23505')
+    expect(report.postgres?.table).toBe('characters')
+    expect(report.postgres?.constraint).toBe('characters_guild_name_key')
+  })
+
+  it('omits the Postgres block for an error the driver never reached the server with', () => {
+    const report = describeError(Object.assign(new Error('getaddrinfo ENOTFOUND db.example'), { code: 'ENOTFOUND' }))
+    expect(report.errorCode).toBe('ENOTFOUND')
+    expect(report.postgres).toBeUndefined()
+  })
+
+  it('describes a throwable that is not an Error at all', () => {
+    expect(describeError('boom')).toEqual({ name: 'NonError', message: 'boom' })
+  })
+
+  it('follows the cause chain', () => {
+    const error = new Error('outer', { cause: postgresError() })
+    expect(describeError(error).cause?.errorCode).toBe('42P01')
+  })
+
+  it('never copies an arbitrary property off the error, so a secret cannot ride along', () => {
+    const report = describeError(
+      Object.assign(new Error('connection failed'), {
+        code: 'ECONNREFUSED',
+        password: 'hunter2',
+        connectionString: 'postgresql://user:hunter2@host:5432/postgres',
+      }),
+    )
+    const serialized = JSON.stringify(report)
+    expect(serialized).not.toContain('hunter2')
+    expect(serialized).not.toContain('postgresql://')
+    expect(report.errorCode).toBe('ECONNREFUSED')
+  })
+
+  it('passes an AppError message through untouched', async () => {
+    const result = await runAction(async () => {
+      throw new AppError('GUILD_EXISTS', 'A guild with that name already exists')
+    })
+    expect(result).toEqual({
+      ok: false,
+      code: 'GUILD_EXISTS',
+      message: 'A guild with that name already exists',
+    })
+  })
+
+  it('reports an unreachable database as a temporary outage, not a generic bug', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const result = await runAction(async () => {
+      throw Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    })
+    spy.mockRestore()
+
+    expect(!result.ok && result.code).toBe('SERVICE_UNAVAILABLE')
+  })
+
+  it('hides a rejected query behind the generic message but logs what it was', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const result = await runAction(async () => {
+      throw postgresError()
+    })
+    const [prefix, payload] = spy.mock.calls[0] ?? []
+    spy.mockRestore()
+
+    expect(!result.ok && result.code).toBe('INTERNAL_ERROR')
+    expect(!result.ok && result.message).toBe('Something went wrong. Try again.')
+
+    // The operator gets, as one parseable line, exactly what the user must not.
+    expect(prefix).toBe('[action] unhandled error')
+    const logged = JSON.parse(String(payload))
+    expect(logged.errorCode).toBe('42P01')
+    expect(logged.message).toBe('relation "guilds" does not exist')
+    expect(logged.postgres.routine).toBe('parserOpenTable')
   })
 })

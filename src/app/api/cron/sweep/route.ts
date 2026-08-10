@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
+import { describeError } from '@/lib/errors'
 import { settleAuctions } from '@/services/auctions'
 import { sweepEvents } from '@/services/events'
 import { expireListings } from '@/services/market'
@@ -51,7 +52,7 @@ async function handle(request: NextRequest) {
     console.info('[cron] sweep complete', JSON.stringify(report))
     return NextResponse.json(report)
   } catch (error) {
-    console.error('[cron] sweep failed', error)
+    console.error('[cron] sweep failed', JSON.stringify(describeError(error)))
     return NextResponse.json({ error: 'Sweep failed' }, { status: 500 })
   }
 }
