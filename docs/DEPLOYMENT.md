@@ -66,6 +66,11 @@ Note that `SUPABASE_URL` is the HTTPS API endpoint for Auth and Storage — it i
 database connection. The Postgres URLs come from **Connect → ORMs** in the dashboard and
 authenticate with the database password, not with an API key.
 
+**No direct database access?** Paste `scripts/supabase-bootstrap.sql` into the Supabase SQL
+Editor instead. It carries the initial schema, the biosuit catalogue and the row that marks
+`0000_init` as applied, so a later `npm run db:migrate` picks up from the right place. It is
+frozen at `0000_init` — every migration after that still goes through drizzle-kit.
+
 For a throwaway environment `npm run db:push` syncs the schema without a migration file.
 Never use `db:push` against production.
 
