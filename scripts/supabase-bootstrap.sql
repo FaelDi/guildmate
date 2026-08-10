@@ -304,18 +304,30 @@ CREATE INDEX "users_status_idx" ON "users" USING btree ("status");
 -- ===========================================================================
 
 INSERT INTO "biosuits" ("race", "name", "min_level") VALUES
-  ('BELLATO', 'Warrior', 1),
-  ('BELLATO', 'Ranger', 1),
-  ('BELLATO', 'Specialist', 1),
-  ('BELLATO', 'Driver', 30),
-  ('CORA', 'Warrior', 1),
-  ('CORA', 'Ranger', 1),
-  ('CORA', 'Specialist', 1),
-  ('CORA', 'Spiritualist', 1),
-  ('ACCRETIA', 'Warrior', 1),
-  ('ACCRETIA', 'Ranger', 1),
-  ('ACCRETIA', 'Specialist', 1),
-  ('ACCRETIA', 'Launcher', 30)
+  ('BELLATO', 'Arbiter', 1),
+  ('BELLATO', 'Demolisher', 1),
+  ('BELLATO', 'Dreadnought', 1),
+  ('BELLATO', 'Enforcer', 1),
+  ('BELLATO', 'Phantom', 1),
+  ('BELLATO', 'Psypher', 1),
+  ('BELLATO', 'Punisher', 1),
+  ('BELLATO', 'Technician', 1),
+  ('CORA', 'Arbiter', 1),
+  ('CORA', 'Demolisher', 1),
+  ('CORA', 'Dreadnought', 1),
+  ('CORA', 'Enforcer', 1),
+  ('CORA', 'Phantom', 1),
+  ('CORA', 'Psypher', 1),
+  ('CORA', 'Punisher', 1),
+  ('CORA', 'Technician', 1),
+  ('ACCRETIA', 'Arbiter', 1),
+  ('ACCRETIA', 'Demolisher', 1),
+  ('ACCRETIA', 'Dreadnought', 1),
+  ('ACCRETIA', 'Enforcer', 1),
+  ('ACCRETIA', 'Phantom', 1),
+  ('ACCRETIA', 'Psypher', 1),
+  ('ACCRETIA', 'Punisher', 1),
+  ('ACCRETIA', 'Technician', 1)
 ON CONFLICT DO NOTHING;
 
 -- ===========================================================================

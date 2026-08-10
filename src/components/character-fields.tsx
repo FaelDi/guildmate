@@ -1,3 +1,4 @@
+import { RF_NEXT_BIOSUITS } from '@/lib/biosuits'
 import { Field, Input, Select } from './ui'
 
 /**
@@ -28,7 +29,14 @@ export function CharacterFields({ lockKind }: { lockKind?: 'MAIN' | 'ALT' }) {
         </Field>
 
         <Field label="Biosuit">
-          <Input name="biosuit" required maxLength={60} placeholder="e.g. Assault" />
+          {/* Suggestions, not a whitelist: the roster is game content, and a
+              private server may run suits Netmarble never shipped. */}
+          <Input name="biosuit" required maxLength={60} list="biosuit-roster" placeholder="Technician" />
+          <datalist id="biosuit-roster">
+            {RF_NEXT_BIOSUITS.map((suit) => (
+              <option key={suit} value={suit} />
+            ))}
+          </datalist>
         </Field>
       </div>
 

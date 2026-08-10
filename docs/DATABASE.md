@@ -40,8 +40,14 @@ Indexes worth knowing:
 - `characters_one_main_per_user` — **partial** unique on `user_id` where `kind = 'MAIN'`
 
 ### `biosuits`
-Catalogue of selectable biosuits per race, so signup is not free text. Game content that
-changes between updates, hence a table rather than an enum.
+Catalogue of selectable biosuits, so signup is not blind free text. Game content that changes
+between updates, hence a table rather than an enum.
+
+Seeded (`npm run db:seed`) with the RF Online Next roster — Arbiter, Demolisher, Dreadnought,
+Enforcer, Phantom, Psypher, Punisher, Technician — for **all three races**: RF Next dropped
+the race-locked classes of the 2004 game. The rows stay race-scoped anyway, so a guild can
+restrict a suit for its own reasons. The canonical list lives in `src/lib/biosuits.ts`, which
+the seed and the signup form both read.
 
 ### `user_restrictions`
 Ban, suspension, or a narrow block (`NO_EVENTS`, `NO_AUCTION`, `NO_MARKET`).

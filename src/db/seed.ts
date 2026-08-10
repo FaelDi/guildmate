@@ -9,36 +9,23 @@
  */
 import { db } from './index'
 import { biosuits } from './schema'
+import { RF_NEXT_BIOSUITS } from '../lib/biosuits'
+
+const RACES = ['BELLATO', 'CORA', 'ACCRETIA'] as const
 
 /**
- * A starting catalogue. Adjust it to match the biosuits your server actually
- * ships — this is game content, which is exactly why it lives in a table an
- * admin can edit rather than in an enum that needs a deploy.
+ * Every suit for every nation. RF Next unlocked biosuits across the three
+ * races, so a per-race catalogue would be wrong; the table stays race-scoped
+ * only because a guild may want to restrict a suit for its own reasons.
  */
-const CATALOGUE: { race: 'BELLATO' | 'CORA' | 'ACCRETIA'; name: string; minLevel: number }[] = [
-  { race: 'BELLATO', name: 'Warrior', minLevel: 1 },
-  { race: 'BELLATO', name: 'Ranger', minLevel: 1 },
-  { race: 'BELLATO', name: 'Specialist', minLevel: 1 },
-  { race: 'BELLATO', name: 'Driver', minLevel: 30 },
-
-  { race: 'CORA', name: 'Warrior', minLevel: 1 },
-  { race: 'CORA', name: 'Ranger', minLevel: 1 },
-  { race: 'CORA', name: 'Specialist', minLevel: 1 },
-  { race: 'CORA', name: 'Spiritualist', minLevel: 1 },
-
-  { race: 'ACCRETIA', name: 'Warrior', minLevel: 1 },
-  { race: 'ACCRETIA', name: 'Ranger', minLevel: 1 },
-  { race: 'ACCRETIA', name: 'Specialist', minLevel: 1 },
-  { race: 'ACCRETIA', name: 'Launcher', minLevel: 30 },
-]
+const CATALOGUE = RACES.flatMap((race) =>
+  RF_NEXT_BIOSUITS.map((name) => ({ race, name, minLevel: 1, isActive: true })),
+)
 
 async function main() {
   console.info('[seed] inserting biosuit catalogue')
 
-  await db
-    .insert(biosuits)
-    .values(CATALOGUE.map((entry) => ({ ...entry, isActive: true })))
-    .onConflictDoNothing()
+  await db.insert(biosuits).values(CATALOGUE).onConflictDoNothing()
 
   console.info(`[seed] done, ${CATALOGUE.length} entries ensured`)
   process.exit(0)

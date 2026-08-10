@@ -14,6 +14,9 @@ level.
 - At most **one MAIN per account**, enforced by a partial unique index.
 - An ALT points at its MAIN through `main_character_id`.
 - Character names are unique per guild, case-insensitively.
+- The biosuit is validated for length, not against a whitelist: the roster is game content
+  (`src/lib/biosuits.ts` carries the eight RF Online Next suits as suggestions), and a private
+  server may run suits Netmarble never shipped.
 
 ### Managing the roster
 
