@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/db'
@@ -290,10 +292,15 @@ export async function listGuildDirectory(limit = 50) {
     .limit(limit)
 }
 
-export async function listOwnCharacters(userId: string) {
+/**
+ * Wrapped in React `cache` because the app shell and the page under it both
+ * want the same roster: without it every navigation paid the round trip twice.
+ * The cache is per request, so it can never serve one member another one's.
+ */
+export const listOwnCharacters = cache(async (userId: string) => {
   return db
     .select()
     .from(characters)
     .where(and(eq(characters.userId, userId), eq(characters.isActive, true)))
     .orderBy(characters.kind, characters.name)
-}
+})

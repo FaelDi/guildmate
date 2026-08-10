@@ -131,7 +131,7 @@ export const enUS: Dictionary = {
     charactersTitle: 'Your characters',
     manageRoster: 'Manage roster',
     noCharacters: 'No characters yet.',
-    charactersHead: ['Name', 'Type', 'Race', 'Biosuit', 'Level'],
+    charactersHead: ['Name', 'Type', 'Faction', 'Biosuit', 'Level'],
     ledgerTitle: 'Point ledger',
     ledgerSubtitle: 'Every entry that ever affected your balance.',
     ledgerEmpty: 'No point activity yet.',
@@ -168,7 +168,7 @@ export const enUS: Dictionary = {
     slotsUsed: 'slots used',
     rosterTitle: 'Your roster',
     rosterSubtitle: "One main plus your alts. An alt's event points are credited to your main.",
-    rosterHead: ['Name', 'Type', 'Race', 'Biosuit', 'Level', ''],
+    rosterHead: ['Name', 'Type', 'Faction', 'Biosuit', 'Level', ''],
     addTitle: 'Add a character',
     rosterFull:
       'Your roster is full. Retiring a character does not free a slot: it keeps its name reserved in the guild.',
@@ -189,7 +189,7 @@ export const enUS: Dictionary = {
 
   characterFields: {
     name: 'Character name',
-    race: 'Race',
+    faction: 'Faction',
     biosuit: 'Biosuit',
     level: 'Current level',
     kind: 'Character type',

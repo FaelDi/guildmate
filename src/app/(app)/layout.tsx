@@ -40,12 +40,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const { actor, user, now } = session
   const admin = isGuildAdmin(actor.role)
-  const [guild] = await db.select().from(guilds).where(eq(guilds.id, actor.guildId)).limit(1)
-  const [t, liveEvent, characters] = await Promise.all([
+  // All four at once. Awaiting the guild row first used to add a full
+  // round trip to every navigation for no reason.
+  const [guildRows, t, liveEvent, characters] = await Promise.all([
+    db.select().from(guilds).where(eq(guilds.id, actor.guildId)).limit(1),
     getDictionary(),
     getLiveEventForMember({ actor, now }),
     listOwnCharacters(actor.id),
   ])
+  const guild = guildRows[0]
 
   return (
     <div className="min-h-dvh">

@@ -23,7 +23,7 @@ export function CharacterFields({ lockKind }: { lockKind?: 'MAIN' | 'ALT' }) {
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t.characterFields.race}>
+        <Field label={t.characterFields.faction}>
           <Select name="race" defaultValue="BELLATO">
             <option value="BELLATO">Bellato</option>
             <option value="CORA">Cora</option>

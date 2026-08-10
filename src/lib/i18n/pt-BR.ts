@@ -133,7 +133,7 @@ export const ptBR = {
     charactersTitle: 'Seus personagens',
     manageRoster: 'Gerenciar elenco',
     noCharacters: 'Nenhum personagem ainda.',
-    charactersHead: ['Nome', 'Tipo', 'Raça', 'Biosuit', 'Nível'],
+    charactersHead: ['Nome', 'Tipo', 'Facção', 'Biosuit', 'Nível'],
     ledgerTitle: 'Livro de pontos',
     ledgerSubtitle: 'Toda entrada que já afetou seu saldo.',
     ledgerEmpty: 'Nenhuma movimentação de pontos ainda.',
@@ -170,7 +170,7 @@ export const ptBR = {
     slotsUsed: 'vagas usadas',
     rosterTitle: 'Seu elenco',
     rosterSubtitle: 'Um main e seus alts. Os pontos de evento de um alt são creditados ao main.',
-    rosterHead: ['Nome', 'Tipo', 'Raça', 'Biosuit', 'Nível', ''],
+    rosterHead: ['Nome', 'Tipo', 'Facção', 'Biosuit', 'Nível', ''],
     addTitle: 'Adicionar personagem',
     rosterFull:
       'Seu elenco está cheio. Aposentar um personagem não libera vaga: o nome dele segue reservado na guild.',
@@ -191,7 +191,9 @@ export const ptBR = {
 
   characterFields: {
     name: 'Nome do personagem',
-    race: 'Raça',
+    // The column is still `race` - RF calls them races in its own lore - but
+    // the players call them factions, so the interface does too.
+    faction: 'Facção',
     biosuit: 'Biosuit',
     level: 'Nível atual',
     kind: 'Tipo de personagem',

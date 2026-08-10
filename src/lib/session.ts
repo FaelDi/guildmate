@@ -2,12 +2,11 @@ import 'server-only'
 
 import { cache } from 'react'
 import { headers } from 'next/headers'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '@/db'
-import { guildSettings, users, type User } from '@/db/schema'
+import { guildSettings, userRestrictions, users, type User } from '@/db/schema'
 import { fingerprint } from './crypto'
 import { AppError, failureToError } from './errors'
-import { loadRestrictions } from './restrictions'
 import { readAccessToken } from './session-cookies'
 import { verifyAccessToken } from './supabase-auth'
 import {
@@ -17,6 +16,13 @@ import {
   type RestrictionLike,
   type SettingsLike,
 } from './rules'
+
+/**
+ * A single account cannot meaningfully carry more live restrictions than
+ * there are restriction types; the limit only stops a pathological row count
+ * from multiplying the joined user row.
+ */
+const MAX_LIVE_RESTRICTIONS = 20
 
 export type SessionContext = {
   actor: Actor
@@ -41,15 +47,37 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
   const claims = await verifyAccessToken(token)
   if (!claims) return null
 
-  const [user] = await db
-    .select()
+  // One round trip, not two. Every request pays this, and the database is a
+  // region away, so the account and the restrictions that govern it are
+  // fetched together instead of the second query waiting on the first.
+  //
+  // The `revoked_at is null` filter belongs in the join, not the WHERE: a
+  // member with no live restriction must still return their user row.
+  const rows = await db
+    .select({
+      user: users,
+      restriction: {
+        type: userRestrictions.type,
+        startsAt: userRestrictions.startsAt,
+        expiresAt: userRestrictions.expiresAt,
+        revokedAt: userRestrictions.revokedAt,
+      },
+    })
     .from(users)
+    .leftJoin(
+      userRestrictions,
+      and(eq(userRestrictions.userId, users.id), isNull(userRestrictions.revokedAt)),
+    )
     .where(eq(users.supabaseUserId, claims.sub))
-    .limit(1)
+    .limit(MAX_LIVE_RESTRICTIONS)
+
+  const user = rows[0]?.user
   if (!user) return null
 
   const now = new Date()
-  const restrictions = await loadRestrictions(user.id)
+  const restrictions = rows
+    .map((row) => row.restriction)
+    .filter((r): r is RestrictionLike => r !== null && r.type !== null)
 
   // A token minted before the account was banned or deactivated is refused
   // here, not merely hidden in the UI.
