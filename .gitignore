@@ -35,5 +35,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+# Agent skills are installed into .agents/skills and committed; what the
+# various tools symlink at them is machine-local and points at absolute paths.
+.claude/skills
+
 # Scratch
 company-template

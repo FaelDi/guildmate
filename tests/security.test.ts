@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { parseConnectionString } from '@/lib/connection-string'
 import { AppError, describeError, runAction } from '@/lib/errors'
 import { redact } from '@/lib/redact'
 import {
@@ -124,6 +125,51 @@ describe('rate limiter', () => {
   it('tracks keys independently', () => {
     expect(rateLimit({ key: 'a', limit: 1, windowMs: 1000, now: 1_000 }).allowed).toBe(true)
     expect(rateLimit({ key: 'b', limit: 1, windowMs: 1000, now: 1_000 }).allowed).toBe(true)
+  })
+})
+
+describe('connection string parsing', () => {
+  const url = 'postgresql://postgres.abc:s3cr3t@aws-0-us-east-1.pooler.supabase.com:6543/postgres'
+
+  it('accepts the URL as a dashboard field takes it', () => {
+    expect(parseConnectionString(url)).toBe(url)
+  })
+
+  it('survives a .env line pasted whole into a dashboard field', () => {
+    // What every hosting panel receives when somebody copies the block the
+    // Supabase "Connect" dialog shows.
+    expect(parseConnectionString(`DATABASE_URL="${url}"`)).toBe(url)
+    expect(parseConnectionString(`DIRECT_URL='${url}'`)).toBe(url)
+    expect(parseConnectionString(`  "${url}"  `)).toBe(url)
+    expect(parseConnectionString(`psql ${url}`)).toBe(url)
+  })
+
+  it('keeps query parameters the dialog appends', () => {
+    const withParams = `${url}?pgbouncer=true&connection_limit=1`
+    expect(parseConnectionString(`DATABASE_URL="${withParams}"`)).toBe(withParams)
+  })
+
+  it('refuses an unset variable by name', () => {
+    expect(() => parseConnectionString(undefined)).toThrow(/DATABASE_URL is not set/)
+    expect(() => parseConnectionString('   ')).toThrow(/DATABASE_URL is not set/)
+    expect(() => parseConnectionString(undefined, 'DIRECT_URL')).toThrow(/DIRECT_URL is not set/)
+  })
+
+  it('says what a valid one looks like instead of throwing Invalid URL', () => {
+    expect(() => parseConnectionString('not a url at all')).toThrow(/postgresql:\/\/user:password@host/)
+  })
+
+  it('catches the Supabase API endpoint being used as the database', () => {
+    expect(() => parseConnectionString('https://abc.supabase.co')).toThrow(/API endpoint, not the database/)
+  })
+
+  it('never echoes the value, because it carries the password', () => {
+    try {
+      parseConnectionString('postgresql://user:hunter2@')
+      throw new Error('should have refused')
+    } catch (error) {
+      expect(String(error)).not.toContain('hunter2')
+    }
   })
 })
 
