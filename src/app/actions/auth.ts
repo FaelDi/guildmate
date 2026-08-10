@@ -46,16 +46,20 @@ export async function registerAction(
 ): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
     try {
-      await registerAccount({
-        email: String(formData.get('email') ?? ''),
-        password: String(formData.get('password') ?? ''),
-        guildSlug: String(formData.get('guildSlug') ?? ''),
-        characterName: String(formData.get('characterName') ?? ''),
-        race: String(formData.get('race') ?? 'BELLATO') as 'BELLATO' | 'CORA' | 'ACCRETIA',
-        biosuit: String(formData.get('biosuit') ?? ''),
-        level: Number(formData.get('level') ?? 1),
-        kind: String(formData.get('kind') ?? 'MAIN') as 'MAIN' | 'ALT',
-      })
+      await registerAccount(
+        {
+          email: String(formData.get('email') ?? ''),
+          password: String(formData.get('password') ?? ''),
+          // A recruitment token overrides this: the link names its own guild.
+          guildSlug: String(formData.get('guildSlug') ?? ''),
+          characterName: String(formData.get('characterName') ?? ''),
+          race: String(formData.get('race') ?? 'BELLATO') as 'BELLATO' | 'CORA' | 'ACCRETIA',
+          biosuit: String(formData.get('biosuit') ?? ''),
+          level: Number(formData.get('level')) || 0,
+          kind: String(formData.get('kind') ?? 'MAIN') as 'MAIN' | 'ALT',
+        },
+        { token: String(formData.get('token') ?? '') },
+      )
       // Sign the new member straight in so they land on the dashboard.
       await signIn({
         email: String(formData.get('email') ?? ''),

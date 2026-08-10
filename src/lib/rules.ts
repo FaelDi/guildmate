@@ -790,6 +790,108 @@ export function evaluateInviteRedemption(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Recruitment: joining an existing guild
+// ---------------------------------------------------------------------------
+
+/** A month. Past that a recruitment link is a door somebody forgot to close. */
+export const MEMBER_INVITE_MAX_TTL_HOURS = 720
+/** Enough for a recruitment drive, small enough to stay a deliberate act. */
+export const MEMBER_INVITE_MAX_USES = 100
+
+export type MemberInviteLike = {
+  id: string
+  guildId: string
+  expiresAt: Date
+  maxUses: number
+  usedCount: number
+  revokedAt: Date | null
+}
+
+export type MemberInviteStatus = 'LIVE' | 'REVOKED' | 'EXPIRED' | 'EXHAUSTED'
+
+export function describeMemberInviteStatus(
+  invite: MemberInviteLike,
+  now: Date,
+): MemberInviteStatus {
+  if (invite.revokedAt !== null) return 'REVOKED'
+  if (now.getTime() >= invite.expiresAt.getTime()) return 'EXPIRED'
+  if (invite.usedCount >= invite.maxUses) return 'EXHAUSTED'
+  return 'LIVE'
+}
+
+/**
+ * Issuing a recruitment link is a guild-admin power, unlike a guild invite:
+ * it adds somebody to a guild that already exists rather than creating one.
+ */
+export function evaluateMemberInviteIssue(params: {
+  actor: Actor
+  guildId: string
+  maxUses: number
+  ttlHours: number
+  now: Date
+}): RuleResult<{ expiresAt: Date; maxUses: number }> {
+  const { actor, guildId, maxUses, ttlHours, now } = params
+
+  const adminCheck = authorizeAdminAction(actor, guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > MEMBER_INVITE_MAX_USES) {
+    return deny('INVALID_USES', `A link can admit between 1 and ${MEMBER_INVITE_MAX_USES} people`)
+  }
+  if (!Number.isInteger(ttlHours) || ttlHours < 1 || ttlHours > MEMBER_INVITE_MAX_TTL_HOURS) {
+    return deny('INVALID_TTL', `The link can last between 1 and ${MEMBER_INVITE_MAX_TTL_HOURS} hours`)
+  }
+
+  return allow({ expiresAt: new Date(now.getTime() + ttlHours * 3_600_000), maxUses })
+}
+
+export type GuildJoinLike = {
+  id: string
+  isActive: boolean
+  joinPolicy: 'OPEN' | 'INVITE_ONLY'
+}
+
+/**
+ * Whether this person may sign up into this guild.
+ *
+ * The two ways in are deliberately not equivalent: an OPEN guild takes anyone
+ * from the public directory, while a closed one takes only a live link that
+ * was issued for *that* guild. A link for another guild is refused with the
+ * same message as a fake one - a token is not a way to enumerate guilds.
+ */
+export function evaluateJoin(params: {
+  guild: GuildJoinLike
+  /** The link the visitor arrived with, if any. */
+  invite: MemberInviteLike | null
+  now: Date
+}): RuleResult<{ guildId: string; inviteId: string | null }> {
+  const { guild, invite, now } = params
+
+  if (!guild.isActive) {
+    return deny('GUILD_NOT_FOUND', 'That guild does not exist or is not accepting members')
+  }
+
+  if (invite) {
+    if (invite.guildId !== guild.id) {
+      return deny('INVITE_INVALID', 'This invite link is not valid')
+    }
+    const status = describeMemberInviteStatus(invite, now)
+    if (status === 'REVOKED') return deny('INVITE_REVOKED', 'This invite was revoked')
+    if (status === 'EXPIRED') return deny('INVITE_EXPIRED', 'This invite has expired')
+    if (status === 'EXHAUSTED') {
+      return deny('INVITE_EXHAUSTED', 'This invite has already been used by everyone it allowed')
+    }
+    return allow({ guildId: guild.id, inviteId: invite.id })
+  }
+
+  if (guild.joinPolicy === 'INVITE_ONLY') {
+    return deny('INVITE_REQUIRED', 'This guild only takes members through an invite link')
+  }
+
+  return allow({ guildId: guild.id, inviteId: null })
+}
+
+// ---------------------------------------------------------------------------
 // Character roster
 // ---------------------------------------------------------------------------
 

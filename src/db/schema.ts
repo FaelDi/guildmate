@@ -121,6 +121,14 @@ export const auctionStatusEnum = pgEnum('auction_status', [
 /** Whether points earned by an ALT are credited to the account or discarded. */
 export const altPointsPolicyEnum = pgEnum('alt_points_policy', ['CREDIT_MAIN', 'NO_CREDIT'])
 
+/**
+ * How a member gets in.
+ * OPEN        - anyone can sign up into the guild from the public directory.
+ * INVITE_ONLY - an admin's link is required. The directory still lists the
+ *               guild, so it can be found, just not joined.
+ */
+export const joinPolicyEnum = pgEnum('join_policy', ['OPEN', 'INVITE_ONLY'])
+
 // ---------------------------------------------------------------------------
 // Guild
 // ---------------------------------------------------------------------------
@@ -162,6 +170,11 @@ export const guildSettings = pgTable('guild_settings', {
   /** Minimum character level allowed to register for events. */
   minLevelToRegister: integer('min_level_to_register').notNull().default(1),
   altPointsPolicy: altPointsPolicyEnum('alt_points_policy').notNull().default('CREDIT_MAIN'),
+  /**
+   * Defaults to OPEN so an existing guild keeps behaving as it did the day
+   * before this column existed. A guild closes itself deliberately.
+   */
+  joinPolicy: joinPolicyEnum('join_policy').notNull().default('OPEN'),
   /** Admin grants above this many points need a second admin to approve. */
   adminGrantApprovalThreshold: integer('admin_grant_approval_threshold').notNull().default(500),
   /** Seconds an auction is extended when a bid lands near the end (anti-sniping). */
@@ -285,6 +298,66 @@ export const guildInvites = pgTable(
     uniqueIndex('guild_invites_token_lookup_key').on(t.tokenLookup),
     index('guild_invites_expires_idx').on(t.expiresAt),
     index('guild_invites_redeemed_idx').on(t.redeemedAt),
+  ],
+)
+
+/**
+ * Recruitment links: how somebody joins an existing guild.
+ *
+ * Separate from `guild_invites` on purpose. That one mints a guild and is a
+ * super-admin power; this one adds a member and belongs to the guild's own
+ * admins. Confusing the two would mean a leader could create guilds.
+ *
+ * `max_uses` covers both shapes the recruiter needs: 1 is a link for one named
+ * person, N is a link to drop in a Discord channel. `used_count` is bumped
+ * inside the same transaction as the account it created, with the row locked,
+ * so a link with three seats cannot admit four people.
+ */
+export const memberInvites = pgTable(
+  'member_invites',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guildId: uuid('guild_id')
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    tokenLookup: text('token_lookup').notNull(),
+    tokenHint: text('token_hint').notNull(),
+    /** Free text for the admin list: which channel, which recruit. */
+    note: text('note'),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    maxUses: integer('max_uses').notNull().default(1),
+    usedCount: integer('used_count').notNull().default(0),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedByUserId: uuid('revoked_by_user_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('member_invites_token_lookup_key').on(t.tokenLookup),
+    index('member_invites_guild_idx').on(t.guildId),
+    index('member_invites_expires_idx').on(t.expiresAt),
+  ],
+)
+
+/** Who came in through which link. One row per member, per invite. */
+export const memberInviteRedemptions = pgTable(
+  'member_invite_redemptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    inviteId: uuid('invite_id')
+      .notNull()
+      .references(() => memberInvites.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('member_invite_redemptions_key').on(t.inviteId, t.userId),
+    index('member_invite_redemptions_user_idx').on(t.userId),
   ],
 )
 
@@ -683,6 +756,8 @@ export type AuctionBid = typeof auctionBids.$inferSelect
 export type MarketListing = typeof marketListings.$inferSelect
 export type AuditLogEntry = typeof auditLog.$inferSelect
 export type GuildInvite = typeof guildInvites.$inferSelect
+export type MemberInvite = typeof memberInvites.$inferSelect
+export type JoinPolicy = (typeof joinPolicyEnum.enumValues)[number]
 
 export type UserRole = (typeof userRoleEnum.enumValues)[number]
 export type UserStatus = (typeof userStatusEnum.enumValues)[number]

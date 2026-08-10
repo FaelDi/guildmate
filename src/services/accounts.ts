@@ -3,14 +3,22 @@ import 'server-only'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/db'
-import { characters, guildSettings, guilds, users } from '@/db/schema'
+import {
+  characters,
+  guildSettings,
+  guilds,
+  memberInviteRedemptions,
+  memberInvites,
+  users,
+} from '@/db/schema'
 import { recordAudit } from '@/lib/audit'
-import { AppError } from '@/lib/errors'
+import { AppError, unwrap } from '@/lib/errors'
 import { rateLimit } from '@/lib/rate-limit'
 import { loadRestrictions } from '@/lib/restrictions'
-import { evaluateAccountAccess } from '@/lib/rules'
+import { evaluateAccountAccess, evaluateJoin } from '@/lib/rules'
 import { clearSessionCookies, readAccessToken, readRefreshToken, setSessionCookies } from '@/lib/session-cookies'
 import { adminCreateUser, signInWithPassword, signOut } from '@/lib/supabase-auth'
+import { findMemberInviteByToken } from './member-invites'
 
 const LOCKOUT_THRESHOLD = 8
 const LOCKOUT_MINUTES = 15
@@ -26,6 +34,7 @@ export const passwordSchema = z
 export const registerSchema = z.object({
   email: z.string().trim().email().max(254),
   password: passwordSchema,
+  /** Ignored when a recruitment token is present: the link names the guild. */
   guildSlug: z.string().trim().min(2).max(60),
   characterName: z.string().trim().min(2).max(40),
   race: z.enum(['BELLATO', 'CORA', 'ACCRETIA']),
@@ -44,14 +53,40 @@ export type RegisterInput = z.infer<typeof registerSchema>
  * local insert fails we are left with an orphan credential that owns nothing -
  * harmless, and reclaimable on retry with the same email.
  */
-export async function registerAccount(input: RegisterInput): Promise<{ userId: string }> {
+export async function registerAccount(
+  input: RegisterInput,
+  options: { token?: string; now?: Date } = {},
+): Promise<{ userId: string }> {
   const parsed = registerSchema.parse(input)
   const email = parsed.email.toLowerCase()
+  const now = options.now ?? new Date()
+  const token = options.token?.trim() ?? ''
 
-  const [guild] = await db.select().from(guilds).where(eq(guilds.slug, parsed.guildSlug)).limit(1)
-  if (!guild || !guild.isActive) {
+  // A recruitment link names its own guild. Trusting the slug alongside it
+  // would let somebody spend a link for guild A to get into guild B.
+  const invite = token ? await findMemberInviteByToken(token) : null
+  if (token && !invite) throw new AppError('INVITE_INVALID', 'This invite link is not valid')
+
+  const [guild] = invite
+    ? await db.select().from(guilds).where(eq(guilds.id, invite.guildId)).limit(1)
+    : await db.select().from(guilds).where(eq(guilds.slug, parsed.guildSlug)).limit(1)
+  if (!guild) {
     throw new AppError('GUILD_NOT_FOUND', 'That guild does not exist or is not accepting members')
   }
+
+  const [settings] = await db
+    .select({ joinPolicy: guildSettings.joinPolicy })
+    .from(guildSettings)
+    .where(eq(guildSettings.guildId, guild.id))
+    .limit(1)
+
+  unwrap(
+    evaluateJoin({
+      guild: { id: guild.id, isActive: guild.isActive, joinPolicy: settings?.joinPolicy ?? 'OPEN' },
+      invite,
+      now,
+    }),
+  )
 
   const [existing] = await db
     .select({ id: users.id })
@@ -68,6 +103,25 @@ export async function registerAccount(input: RegisterInput): Promise<{ userId: s
   if (!created) throw new AppError('REGISTRATION_FAILED', 'This account could not be created')
 
   return db.transaction(async (tx) => {
+    // Re-read the link under a lock: between the check above and here, the
+    // last seat may have been taken by somebody else clicking the same URL.
+    if (invite) {
+      const [locked] = await tx
+        .select()
+        .from(memberInvites)
+        .where(eq(memberInvites.id, invite.id))
+        .limit(1)
+        .for('update')
+      if (!locked) throw new AppError('INVITE_INVALID', 'This invite link is not valid')
+      unwrap(
+        evaluateJoin({
+          guild: { id: guild.id, isActive: guild.isActive, joinPolicy: 'INVITE_ONLY' },
+          invite: locked,
+          now,
+        }),
+      )
+    }
+
     const [user] = await tx
       .insert(users)
       .values({
@@ -81,6 +135,17 @@ export async function registerAccount(input: RegisterInput): Promise<{ userId: s
       .returning({ id: users.id })
 
     if (!user) throw new AppError('REGISTRATION_FAILED', 'This account could not be created')
+
+    if (invite) {
+      await tx
+        .update(memberInvites)
+        .set({ usedCount: sql`${memberInvites.usedCount} + 1` })
+        .where(eq(memberInvites.id, invite.id))
+
+      await tx
+        .insert(memberInviteRedemptions)
+        .values({ inviteId: invite.id, userId: user.id, redeemedAt: now })
+    }
 
     await tx.insert(characters).values({
       userId: user.id,
@@ -208,6 +273,7 @@ export async function listGuildDirectory(limit = 50) {
       tag: guilds.tag,
       isActive: guilds.isActive,
       createdAt: guilds.createdAt,
+      joinPolicy: guildSettings.joinPolicy,
       members: sql<number>`count(${users.id}) filter (where ${users.deletedAt} is null)`.mapWith(Number),
       active: sql<number>`count(${users.id}) filter (
         where ${users.deletedAt} is null and ${users.isActive} and ${users.status} = 'ACTIVE'
@@ -218,7 +284,8 @@ export async function listGuildDirectory(limit = 50) {
     })
     .from(guilds)
     .leftJoin(users, eq(users.guildId, guilds.id))
-    .groupBy(guilds.id)
+    .leftJoin(guildSettings, eq(guildSettings.guildId, guilds.id))
+    .groupBy(guilds.id, guildSettings.joinPolicy)
     .orderBy(desc(sql`count(${users.id})`), guilds.name)
     .limit(limit)
 }

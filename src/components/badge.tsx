@@ -26,6 +26,8 @@ const BADGE_TONES: Record<string, string> = {
   BANNED: 'border-slag/45 bg-slag/10 text-slag',
   DELETED: 'border-slag/55 bg-slag/15 text-slag',
   EXPIRED: 'border-edge bg-panel-raised text-muted',
+  EXHAUSTED: 'border-edge bg-panel-raised text-muted',
+  INVITE_ONLY: 'border-cora/45 bg-cora/10 text-cora',
   INACTIVE: 'border-edge bg-panel-raised text-muted',
 
   // Item rarity.

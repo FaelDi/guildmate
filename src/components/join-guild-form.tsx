@@ -17,11 +17,18 @@ export type JoinableGuild = { slug: string; name: string; tag: string | null }
  * is honest but useless. Guilds that stopped accepting members are not in the
  * list at all, so the choice cannot be wrong.
  */
-export function JoinGuildForm({ guilds }: { guilds: JoinableGuild[] }) {
+export function JoinGuildForm({
+  guilds,
+  invite,
+}: {
+  guilds: JoinableGuild[]
+  /** Set when the visitor arrived through a recruitment link. */
+  invite?: { token: string; guildName: string } | null
+}) {
   const [state, formAction] = useActionState(registerAction, null)
   const t = useDictionary()
 
-  if (guilds.length === 0) {
+  if (!invite && guilds.length === 0) {
     return (
       <p className="text-sm leading-relaxed text-muted">
         {t.auth.noGuildsYet}
@@ -31,16 +38,28 @@ export function JoinGuildForm({ guilds }: { guilds: JoinableGuild[] }) {
 
   return (
     <form action={formAction} className="space-y-4">
-      <Field label={t.common.guild}>
-        <Select name="guildSlug" required defaultValue={guilds[0]?.slug}>
-          {guilds.map((guild) => (
-            <option key={guild.slug} value={guild.slug}>
-              {guild.name}
-              {guild.tag ? ` [${guild.tag}]` : ''}
-            </option>
-          ))}
-        </Select>
-      </Field>
+      {invite ? (
+        // The link decided the guild; showing a picker would imply otherwise.
+        <>
+          <input type="hidden" name="token" value={invite.token} />
+          <Field label={t.common.guild}>
+            <p className="notch-control border border-ore/45 bg-ore/10 px-3 py-2 text-sm text-ore">
+              {invite.guildName}
+            </p>
+          </Field>
+        </>
+      ) : (
+        <Field label={t.common.guild}>
+          <Select name="guildSlug" required defaultValue={guilds[0]?.slug}>
+            {guilds.map((guild) => (
+              <option key={guild.slug} value={guild.slug}>
+                {guild.name}
+                {guild.tag ? ` [${guild.tag}]` : ''}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
 
       <Field label={t.common.email}>
         <Input name="email" type="email" required autoComplete="email" />

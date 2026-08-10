@@ -1,31 +1,63 @@
 import Link from 'next/link'
 import { JoinGuildForm } from '@/components/join-guild-form'
+import { LocaleSwitch } from '@/components/locale-switch'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
 import { listGuildDirectory } from '@/services/accounts'
+import { peekMemberInvite } from '@/services/member-invites'
 
 export const dynamic = 'force-dynamic'
 
-export default async function RegisterPage() {
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>
+}) {
+  const token = (await searchParams).token?.trim() ?? ''
   const t = await getDictionary()
-  const directory = await listGuildDirectory()
-  const joinable = directory.filter((guild) => guild.isActive)
+  const [directory, invite] = await Promise.all([
+    listGuildDirectory(),
+    token ? peekMemberInvite(token, new Date()) : null,
+  ])
+
+  // A dead link falls back to the public list rather than a dead end: the
+  // guild may well be open anyway.
+  const liveInvite =
+    invite && invite.status === 'LIVE' && invite.guildName
+      ? { token, guildName: invite.guildName, seatsLeft: invite.seatsLeft }
+      : null
+
+  const joinable = directory.filter(
+    (guild) => guild.isActive && (guild.joinPolicy ?? 'OPEN') === 'OPEN',
+  )
 
   return (
     <main className="mx-auto grid min-h-dvh max-w-5xl grid-cols-1 items-start gap-8 px-6 py-16 lg:grid-cols-[1fr_1fr]">
-      <div className="lg:col-span-2">
+      <div className="flex items-center justify-between lg:col-span-2">
         <Link href="/" className="font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
           GuildMate
         </Link>
+        <LocaleSwitch />
       </div>
 
-      <Panel title={t.auth.joinTitle} subtitle={t.auth.joinSubtitle}>
+      <Panel
+        title={liveInvite ? `${t.recruit.joinTitle} ${liveInvite.guildName}` : t.auth.joinTitle}
+        subtitle={liveInvite ? t.recruit.joinSubtitle : t.auth.joinSubtitle}
+        tone={liveInvite ? 'ore' : 'neutral'}
+      >
+        {liveInvite && liveInvite.seatsLeft > 1 && (
+          <p className="mb-4 text-[11px] uppercase tracking-[0.14em] text-ore">
+            {liveInvite.seatsLeft} {t.recruit.seatsLeft}
+          </p>
+        )}
+
         <JoinGuildForm
           guilds={joinable.map((guild) => ({
             slug: guild.slug,
             name: guild.name,
             tag: guild.tag,
           }))}
+          invite={liveInvite}
         />
 
         <p className="mt-5 text-xs text-muted">
@@ -36,10 +68,7 @@ export default async function RegisterPage() {
         </p>
       </Panel>
 
-      <Panel
-        title={t.auth.directoryTitle}
-        subtitle={t.auth.directorySubtitle}
-      >
+      <Panel title={t.auth.directoryTitle} subtitle={t.auth.directorySubtitle}>
         {directory.length === 0 ? (
           <Empty>{t.auth.directoryEmpty}</Empty>
         ) : (
@@ -54,13 +83,19 @@ export default async function RegisterPage() {
                   <div className="font-mono text-[11px] text-muted/70">{guild.slug}</div>
                 </td>
                 <td className="px-3 py-2.5">
-                  <Badge value={guild.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                  <Badge
+                    value={
+                      !guild.isActive
+                        ? 'INACTIVE'
+                        : (guild.joinPolicy ?? 'OPEN') === 'OPEN'
+                          ? 'ACTIVE'
+                          : 'INVITE_ONLY'
+                    }
+                  />
                 </td>
                 <td className="px-3 py-2.5 font-mono tabular-nums text-ink">{guild.members}</td>
                 <td className="px-3 py-2.5 font-mono tabular-nums text-refined">{guild.active}</td>
-                <td className="px-3 py-2.5 font-mono tabular-nums text-muted">
-                  {guild.suspended}
-                </td>
+                <td className="px-3 py-2.5 font-mono tabular-nums text-muted">{guild.suspended}</td>
               </tr>
             ))}
           </Table>

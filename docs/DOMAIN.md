@@ -34,6 +34,37 @@ so two people opening the same link at the same moment cannot produce two guilds
 
 ---
 
+## Joining a guild
+
+A guild decides for itself who gets in, through `guild_settings.join_policy`:
+
+| Policy | What it means |
+|---|---|
+| `OPEN` (default) | Anyone finds the guild in the public directory and signs up |
+| `INVITE_ONLY` | The guild stays listed, but only a recruitment link admits somebody |
+
+A recruitment link is issued by a **guild admin** — unlike a guild invite, which mints a whole
+new guild and is a super-admin power. Confusing the two would let a leader spawn guilds.
+
+| Rule | Function | Denial |
+|---|---|---|
+| A closed guild needs a link | `evaluateJoin` | `INVITE_REQUIRED` |
+| A link only works for the guild it was issued for | `evaluateJoin` | `INVITE_INVALID` |
+| A link stops at its seat count | `evaluateJoin` | `INVITE_EXHAUSTED` |
+| Expired or revoked links are dead | `evaluateJoin` | `INVITE_EXPIRED`, `INVITE_REVOKED` |
+| 1 to 100 seats, 1 hour to 30 days | `evaluateMemberInviteIssue` | `INVALID_USES`, `INVALID_TTL` |
+| Only a guild admin issues one | `evaluateMemberInviteIssue` | `FORBIDDEN` |
+
+`max_uses` covers both shapes recruitment needs: **1** is a link for one named person, **N**
+is a link to drop in a Discord channel. `used_count` is incremented in the same transaction
+as the account it created, with the row locked, so a link with three seats cannot admit four
+people — and `member_invite_redemptions` records who came in through which link.
+
+A link overrides the guild picker entirely: the guild id comes from the invite, never from
+the form, so a token for guild A cannot be used to walk into guild B.
+
+---
+
 ## Accounts and characters
 
 An **account** (`users`) holds credentials (in Supabase Auth), a role and a state. It owns

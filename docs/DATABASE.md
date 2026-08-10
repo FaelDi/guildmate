@@ -16,13 +16,14 @@ without a deploy.
 |---|---|---|
 | `min_participants` | 3 | Registrations required for an event to confirm |
 | `confirmation_window_hours` | 48 | Hours before an under-quorum event is cancelled |
-| `default_code_ttl_minutes` | 30 | Default join-code lifetime |
+| `default_code_ttl_minutes` | 60 | Default join-code lifetime (one hour) |
 | `max_code_ttl_minutes` | 720 | Cap on the lifetime an admin may pick |
 | `max_registrations_per_day` | 12 | Per-account rolling 24h cap |
 | `min_level_to_register` | 1 | Minimum character level for events |
 | `alt_points_policy` | `CREDIT_MAIN` | Whether ALT points roll up to the MAIN or are refused |
 | `admin_grant_approval_threshold` | 500 | Manual awards above this are flagged for a second admin |
 | `auction_anti_snipe_seconds` | 120 | Closing-window extension on a late bid |
+| `join_policy` | `OPEN` | `OPEN` takes public sign-ups; `INVITE_ONLY` requires a recruitment link |
 
 ### `users`
 An account. Stores **no password**: credentials live in Supabase Auth, referenced by
@@ -53,6 +54,18 @@ The only door a guild comes through. Single use, 24 hours.
 
 `redeemed_at` is written in the same transaction as the guild, with the row locked, so the
 link cannot be spent twice.
+
+### `member_invites`
+Recruitment links for an existing guild. Issued by that guild's admins, never by a member.
+
+| Column | Note |
+|---|---|
+| `token_hash` / `token_lookup` / `token_hint` | Same scheme as `guild_invites`: peppered digest, blind index, last 6 characters for the list |
+| `max_uses` / `used_count` | 1 is a link for one person, N is a link for a channel. The counter moves inside the transaction that creates the account, with the row locked |
+| `revoked_at` / `revoked_by_user_id` | Kills a link that leaked |
+
+### `member_invite_redemptions`
+Who joined through which link. Unique on `(invite_id, user_id)`.
 
 ### `biosuits`
 Catalogue of selectable biosuits, so signup is not blind free text. Game content that changes

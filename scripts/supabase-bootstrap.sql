@@ -14,7 +14,7 @@
 -- there must not be silently reapplied.
 --
 -- REGENERATE this file after adding a migration - it is a copy, and a copy
--- goes stale. Migrations included: 0000_init, 0001_pink_valkyrie.
+-- goes stale. Migrations included: 0000_init, 0001_pink_valkyrie, 0002_spotty_the_twelve, 0003_melodic_the_hood.
 
 BEGIN;
 
@@ -325,6 +325,51 @@ CREATE UNIQUE INDEX "guild_invites_token_lookup_key" ON "guild_invites" USING bt
 CREATE INDEX "guild_invites_expires_idx" ON "guild_invites" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "guild_invites_redeemed_idx" ON "guild_invites" USING btree ("redeemed_at");
 
+-- ---- 0002_spotty_the_twelve ----
+
+ALTER TABLE "guild_settings" ALTER COLUMN "default_code_ttl_minutes" SET DEFAULT 60;--> statement-breakpoint
+-- Guilds still carrying the old default never chose 30 minutes; they inherited
+-- it. Moving them is what makes the new default take effect for real. A guild
+-- that picked any other lifetime is left exactly as it is.
+UPDATE "guild_settings" SET "default_code_ttl_minutes" = 60 WHERE "default_code_ttl_minutes" = 30;
+
+-- ---- 0003_melodic_the_hood ----
+
+CREATE TYPE "public"."join_policy" AS ENUM('OPEN', 'INVITE_ONLY');--> statement-breakpoint
+CREATE TABLE "member_invite_redemptions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"invite_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"redeemed_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "member_invites" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"guild_id" uuid NOT NULL,
+	"token_hash" text NOT NULL,
+	"token_lookup" text NOT NULL,
+	"token_hint" text NOT NULL,
+	"note" text,
+	"created_by_user_id" uuid NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"max_uses" integer DEFAULT 1 NOT NULL,
+	"used_count" integer DEFAULT 0 NOT NULL,
+	"revoked_at" timestamp with time zone,
+	"revoked_by_user_id" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "guild_settings" ADD COLUMN "join_policy" "join_policy" DEFAULT 'OPEN' NOT NULL;--> statement-breakpoint
+ALTER TABLE "member_invite_redemptions" ADD CONSTRAINT "member_invite_redemptions_invite_id_member_invites_id_fk" FOREIGN KEY ("invite_id") REFERENCES "public"."member_invites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "member_invite_redemptions" ADD CONSTRAINT "member_invite_redemptions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "member_invites" ADD CONSTRAINT "member_invites_guild_id_guilds_id_fk" FOREIGN KEY ("guild_id") REFERENCES "public"."guilds"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "member_invites" ADD CONSTRAINT "member_invites_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "member_invite_redemptions_key" ON "member_invite_redemptions" USING btree ("invite_id","user_id");--> statement-breakpoint
+CREATE INDEX "member_invite_redemptions_user_idx" ON "member_invite_redemptions" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "member_invites_token_lookup_key" ON "member_invites" USING btree ("token_lookup");--> statement-breakpoint
+CREATE INDEX "member_invites_guild_idx" ON "member_invites" USING btree ("guild_id");--> statement-breakpoint
+CREATE INDEX "member_invites_expires_idx" ON "member_invites" USING btree ("expires_at");
+
 -- ===========================================================================
 -- 2. Biosuit catalogue
 -- ===========================================================================
@@ -368,5 +413,7 @@ CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
 );
 INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ('7dc05c1f8796693b6ad8980361ac6f66333935b29d4ee15d2ff42a9794ae2791', 1786290112764);
 INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ('b713b043c193351eb4c7a4f7a463cc4e2076a597094452fff61140b3c249b66a', 1786384436182);
+INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ('f49e993e735dc5dca587bdb1ac3ad4188b16992c71d8e7f3e9e0c780d5828c54', 1786386039300);
+INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ('5481451b741b22fac41fc8bed9ecabfd489952adf6fb47987f92fcc2f7a503b9', 1786398085546);
 
 COMMIT;

@@ -22,6 +22,7 @@ const NAV: { href: string; key: NavKey; visibleTo: Visibility }[] = [
   { href: '/auctions', key: 'auctions', visibleTo: 'everyone' },
   { href: '/market', key: 'market', visibleTo: 'everyone' },
   { href: '/admin', key: 'members', visibleTo: 'admin' },
+  { href: '/admin/recruit', key: 'recruit', visibleTo: 'admin' },
   { href: '/admin/events', key: 'eventAdmin', visibleTo: 'admin' },
   { href: '/admin/log', key: 'audit', visibleTo: 'admin' },
   { href: '/admin/invites', key: 'invites', visibleTo: 'superAdmin' },

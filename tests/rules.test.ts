@@ -8,10 +8,15 @@ import {
   authorizeRoleChange,
   computeBalance,
   describeInviteStatus,
+  describeMemberInviteStatus,
   deriveUserStatus,
   evaluateInviteRedemption,
+  evaluateJoin,
+  evaluateMemberInviteIssue,
   resolveInviteExpiry,
   INVITE_TTL_HOURS,
+  MEMBER_INVITE_MAX_TTL_HOURS,
+  MEMBER_INVITE_MAX_USES,
   evaluateAccountAccess,
   evaluateAdminGrant,
   evaluateBid,
@@ -33,7 +38,9 @@ import {
   type CharacterDraft,
   type CharacterLike,
   type EventLike,
+  type GuildJoinLike,
   type InviteLike,
+  type MemberInviteLike,
   type RestrictionLike,
   type SettingsLike,
 } from '@/lib/rules'
@@ -890,6 +897,188 @@ describe('guild invites', () => {
   it('refuses a deactivated super admin', () => {
     const result = authorizeInviteIssue(actor({ role: 'SUPER_ADMIN', isActive: false }))
     expect(!result.ok && result.code).toBe('ACCOUNT_INACTIVE')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Recruitment
+// ---------------------------------------------------------------------------
+
+describe('joining a guild', () => {
+  function guild(overrides: Partial<GuildJoinLike> = {}): GuildJoinLike {
+    return { id: GUILD, isActive: true, joinPolicy: 'OPEN', ...overrides }
+  }
+
+  function memberInvite(overrides: Partial<MemberInviteLike> = {}): MemberInviteLike {
+    return {
+      id: 'invite-1',
+      guildId: GUILD,
+      expiresAt: new Date(NOW.getTime() + 3_600_000),
+      maxUses: 1,
+      usedCount: 0,
+      revokedAt: null,
+      ...overrides,
+    }
+  }
+
+  it('lets anyone into an open guild with no link at all', () => {
+    const result = evaluateJoin({ guild: guild(), invite: null, now: NOW })
+    expect(result.ok && result.value).toEqual({ guildId: GUILD, inviteId: null })
+  })
+
+  it('refuses an open signup once the guild closed itself', () => {
+    const result = evaluateJoin({
+      guild: guild({ joinPolicy: 'INVITE_ONLY' }),
+      invite: null,
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('INVITE_REQUIRED')
+  })
+
+  it('lets a live link into a closed guild', () => {
+    const result = evaluateJoin({
+      guild: guild({ joinPolicy: 'INVITE_ONLY' }),
+      invite: memberInvite(),
+      now: NOW,
+    })
+    expect(result.ok && result.value.inviteId).toBe('invite-1')
+  })
+
+  it('refuses a link issued for another guild without saying so', () => {
+    const result = evaluateJoin({
+      guild: guild(),
+      invite: memberInvite({ guildId: 'other-guild' }),
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('INVITE_INVALID')
+  })
+
+  it('refuses an inactive guild even to somebody holding a valid link', () => {
+    const result = evaluateJoin({
+      guild: guild({ isActive: false }),
+      invite: memberInvite(),
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('GUILD_NOT_FOUND')
+  })
+
+  it('counts seats: the last one works, the next does not', () => {
+    const nearlyFull = memberInvite({ maxUses: 3, usedCount: 2 })
+    expect(evaluateJoin({ guild: guild(), invite: nearlyFull, now: NOW }).ok).toBe(true)
+
+    const full = evaluateJoin({
+      guild: guild(),
+      invite: memberInvite({ maxUses: 3, usedCount: 3 }),
+      now: NOW,
+    })
+    expect(!full.ok && full.code).toBe('INVITE_EXHAUSTED')
+  })
+
+  it('refuses an expired or revoked link', () => {
+    const expired = evaluateJoin({
+      guild: guild(),
+      invite: memberInvite({ expiresAt: NOW }),
+      now: NOW,
+    })
+    expect(!expired.ok && expired.code).toBe('INVITE_EXPIRED')
+
+    const revoked = evaluateJoin({
+      guild: guild(),
+      invite: memberInvite({ revokedAt: NOW }),
+      now: NOW,
+    })
+    expect(!revoked.ok && revoked.code).toBe('INVITE_REVOKED')
+  })
+
+  it('reports a status for every combination, revocation first', () => {
+    expect(describeMemberInviteStatus(memberInvite(), NOW)).toBe('LIVE')
+    expect(describeMemberInviteStatus(memberInvite({ expiresAt: NOW }), NOW)).toBe('EXPIRED')
+    expect(describeMemberInviteStatus(memberInvite({ usedCount: 1 }), NOW)).toBe('EXHAUSTED')
+    expect(
+      describeMemberInviteStatus(memberInvite({ usedCount: 1, revokedAt: NOW }), NOW),
+    ).toBe('REVOKED')
+  })
+})
+
+describe('issuing a recruitment link', () => {
+  const admin = actor({ role: 'VICE_LEADER' })
+
+  it('lets a guild admin issue one', () => {
+    const result = evaluateMemberInviteIssue({
+      actor: admin,
+      guildId: GUILD,
+      maxUses: 10,
+      ttlHours: 24,
+      now: NOW,
+    })
+    expect(result.ok && result.value.maxUses).toBe(10)
+    expect(result.ok && result.value.expiresAt.toISOString()).toBe('2026-08-10T12:00:00.000Z')
+  })
+
+  it('refuses a plain member', () => {
+    const result = evaluateMemberInviteIssue({
+      actor: actor(),
+      guildId: GUILD,
+      maxUses: 1,
+      ttlHours: 24,
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('FORBIDDEN')
+  })
+
+  it('refuses an admin of another guild', () => {
+    const result = evaluateMemberInviteIssue({
+      actor: actor({ role: 'LEADER', guildId: 'other' }),
+      guildId: GUILD,
+      maxUses: 1,
+      ttlHours: 24,
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('FORBIDDEN')
+  })
+
+  it('bounds the number of seats', () => {
+    for (const maxUses of [0, -1, 2.5, MEMBER_INVITE_MAX_USES + 1]) {
+      const result = evaluateMemberInviteIssue({
+        actor: admin,
+        guildId: GUILD,
+        maxUses,
+        ttlHours: 24,
+        now: NOW,
+      })
+      expect(!result.ok && result.code).toBe('INVALID_USES')
+    }
+    expect(
+      evaluateMemberInviteIssue({
+        actor: admin,
+        guildId: GUILD,
+        maxUses: MEMBER_INVITE_MAX_USES,
+        ttlHours: 24,
+        now: NOW,
+      }).ok,
+    ).toBe(true)
+  })
+
+  it('bounds how long it lives', () => {
+    for (const ttlHours of [0, -3, MEMBER_INVITE_MAX_TTL_HOURS + 1]) {
+      const result = evaluateMemberInviteIssue({
+        actor: admin,
+        guildId: GUILD,
+        maxUses: 1,
+        ttlHours,
+        now: NOW,
+      })
+      expect(!result.ok && result.code).toBe('INVALID_TTL')
+    }
+    expect(
+      evaluateMemberInviteIssue({
+        actor: admin,
+        guildId: GUILD,
+        maxUses: 1,
+        ttlHours: MEMBER_INVITE_MAX_TTL_HOURS,
+        now: NOW,
+      }).ok,
+    ).toBe(true)
   })
 })
 

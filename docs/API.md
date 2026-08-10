@@ -21,7 +21,7 @@ one, with the detail logged server-side.
 | Action | Auth | Notes |
 |---|---|---|
 | `signInAction` | public | Calls GoTrue server-side, sets httpOnly cookies. One generic failure message |
-| `registerAction` | public | Creates the Supabase credential + the domain row + the first character |
+| `registerAction` | public, or a recruitment token | Creates the Supabase credential + the domain row + the first character. With a token the guild comes from the link, and a seat is spent in the same transaction |
 | `createGuildAction` | invite token | Spends a guild invite and creates the guild, its first `LEADER` and that leader's main character. The only path that creates a guild |
 | `signOutAction` | session | Revokes the refresh token and clears cookies |
 
@@ -35,6 +35,17 @@ one, with the detail logged server-side.
 Minting an invite is not a guild-admin power: it creates a guild *outside* any existing one,
 so a leader able to do it could spawn guilds forever. The first invite on a fresh database
 comes from `npm run invite:new`, which needs database credentials rather than a session.
+
+### `src/app/actions/recruit.ts`
+
+Recruitment into an existing guild. Guild-admin only, always scoped to the caller's own
+guild — the guild id is never read from the form.
+
+| Action | Auth | Notes |
+|---|---|---|
+| `issueMemberInviteAction` | guild admin | **Returns the link once.** 1 seat or many, 1 hour to 30 days |
+| `revokeMemberInviteAction` | guild admin | Kills a live link. Seats already spent stay spent |
+| `setJoinPolicyAction` | guild admin | Switches the guild between `OPEN` and `INVITE_ONLY` |
 
 ### `src/app/actions/characters.ts`
 
