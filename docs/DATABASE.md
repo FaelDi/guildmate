@@ -39,6 +39,21 @@ Indexes worth knowing:
 - `characters_guild_name_key` — unique `(guild_id, name_normalized)`
 - `characters_one_main_per_user` — **partial** unique on `user_id` where `kind = 'MAIN'`
 
+### `guild_invites`
+The only door a guild comes through. Single use, 24 hours.
+
+| Column | Note |
+|---|---|
+| `token_hash` | scrypt digest, peppered. The token itself is never stored |
+| `token_lookup` | Blind index (HMAC), unique — redemption is one indexed read |
+| `token_hint` | Last 6 characters, so two live invites can be told apart in the admin list |
+| `created_by_user_id` | NULL when minted by `npm run invite:new`, before any user exists |
+| `redeemed_at` / `redeemed_by_user_id` / `guild_id` | The receipt: when it was spent, by whom, and what it produced |
+| `revoked_at` / `revoked_by_user_id` | Kills a leaked link that nobody has spent yet |
+
+`redeemed_at` is written in the same transaction as the guild, with the row locked, so the
+link cannot be spent twice.
+
 ### `biosuits`
 Catalogue of selectable biosuits, so signup is not blind free text. Game content that changes
 between updates, hence a table rather than an enum.

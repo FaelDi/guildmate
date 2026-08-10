@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   activeRestrictionTypes,
   applyAntiSnipe,
+  authorizeInviteIssue,
   authorizeModeration,
   authorizeResource,
   authorizeRoleChange,
   computeBalance,
+  describeInviteStatus,
   deriveUserStatus,
+  evaluateInviteRedemption,
+  resolveInviteExpiry,
+  INVITE_TTL_HOURS,
   evaluateAccountAccess,
   evaluateAdminGrant,
   evaluateBid,
@@ -28,6 +33,7 @@ import {
   type CharacterDraft,
   type CharacterLike,
   type EventLike,
+  type InviteLike,
   type RestrictionLike,
   type SettingsLike,
 } from '@/lib/rules'
@@ -794,6 +800,96 @@ describe('evaluateListingCreate', () => {
       now: NOW,
     })
     expect(!result.ok && result.code).toBe('RESTRICTED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Guild invites
+// ---------------------------------------------------------------------------
+
+describe('guild invites', () => {
+  function invite(overrides: Partial<InviteLike> = {}): InviteLike {
+    return {
+      id: 'invite-1',
+      expiresAt: new Date(NOW.getTime() + 3_600_000),
+      redeemedAt: null,
+      revokedAt: null,
+      ...overrides,
+    }
+  }
+
+  it('expires exactly 24 hours after it is issued', () => {
+    expect(resolveInviteExpiry(NOW).toISOString()).toBe('2026-08-10T12:00:00.000Z')
+    expect(INVITE_TTL_HOURS).toBe(24)
+  })
+
+  it('accepts a live invite redeemed by a visitor with no account', () => {
+    const result = evaluateInviteRedemption({ invite: invite(), actor: null, now: NOW })
+    expect(result.ok && result.value.inviteId).toBe('invite-1')
+  })
+
+  it('accepts an invite in the final instant before it expires', () => {
+    const result = evaluateInviteRedemption({
+      invite: invite({ expiresAt: new Date(NOW.getTime() + 1) }),
+      actor: null,
+      now: NOW,
+    })
+    expect(result.ok).toBe(true)
+  })
+
+  it('refuses the invite the instant it expires', () => {
+    const result = evaluateInviteRedemption({
+      invite: invite({ expiresAt: NOW }),
+      actor: null,
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('INVITE_EXPIRED')
+  })
+
+  it('refuses a second use', () => {
+    const result = evaluateInviteRedemption({
+      invite: invite({ redeemedAt: new Date(NOW.getTime() - 1000) }),
+      actor: null,
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('INVITE_USED')
+  })
+
+  it('refuses a revoked invite even while it is otherwise live', () => {
+    const result = evaluateInviteRedemption({
+      invite: invite({ revokedAt: new Date(NOW.getTime() - 1000) }),
+      actor: null,
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('INVITE_REVOKED')
+  })
+
+  it('refuses a caller who already belongs to a guild', () => {
+    const result = evaluateInviteRedemption({ invite: invite(), actor: actor(), now: NOW })
+    expect(!result.ok && result.code).toBe('ALREADY_IN_GUILD')
+  })
+
+  it('reports a status for every combination', () => {
+    expect(describeInviteStatus(invite(), NOW)).toBe('LIVE')
+    expect(describeInviteStatus(invite({ expiresAt: NOW }), NOW)).toBe('EXPIRED')
+    expect(describeInviteStatus(invite({ redeemedAt: NOW }), NOW)).toBe('REDEEMED')
+    expect(describeInviteStatus(invite({ revokedAt: NOW }), NOW)).toBe('REVOKED')
+    // Revocation outranks everything else, so a revoked invite never reads as used.
+    expect(describeInviteStatus(invite({ redeemedAt: NOW, revokedAt: NOW }), NOW)).toBe('REVOKED')
+  })
+
+  it('lets only a super admin issue one', () => {
+    expect(authorizeInviteIssue(actor({ role: 'SUPER_ADMIN' })).ok).toBe(true)
+
+    for (const role of ['MEMBER', 'VICE_LEADER', 'LEADER'] as const) {
+      const result = authorizeInviteIssue(actor({ role }))
+      expect(!result.ok && result.code).toBe('FORBIDDEN')
+    }
+  })
+
+  it('refuses a deactivated super admin', () => {
+    const result = authorizeInviteIssue(actor({ role: 'SUPER_ADMIN', isActive: false }))
+    expect(!result.ok && result.code).toBe('ACCOUNT_INACTIVE')
   })
 })
 

@@ -1,28 +1,28 @@
 -- GuildMate bootstrap: run once in the Supabase SQL Editor.
 --
--- For a machine that can reach the database directly, `npm run db:migrate`
--- plus `npm run db:seed` is the normal path and stays authoritative. This file
+-- For a machine that can reach the database directly, "npm run db:migrate"
+-- plus "npm run db:seed" is the normal path and stays authoritative. This file
 -- exists for the case where only the dashboard is available.
 --
--- Section 1 is drizzle/0000_init.sql verbatim (the schema).
+-- Section 1 is every migration in drizzle/, in order.
 -- Section 2 is the biosuit catalogue, the same rows npm run db:seed inserts.
--- Section 3 records the migration as applied, so a later npm run db:migrate
--- does not try to create everything a second time.
+-- Section 3 records those migrations as applied, so a later npm run db:migrate
+-- picks up from the right place instead of recreating everything.
 --
--- Re-running is safe only for sections 2 and 3; section 1 fails the second
--- time because the types already exist. That is intended: a schema that is
--- already there must not be silently reapplied.
+-- Re-running is safe only for sections 2 and 3; section 1 fails the second time
+-- because the types already exist. That is intended: a schema that is already
+-- there must not be silently reapplied.
 --
--- WARNING: section 1 is a COPY of drizzle/0000_init.sql, frozen at the initial
--- migration. It does NOT pick up later migrations. Once drizzle/ has a 0001,
--- this file only bootstraps a database to the 0000 state - apply the rest with
--- `npm run db:migrate`, or regenerate this file.
+-- REGENERATE this file after adding a migration - it is a copy, and a copy
+-- goes stale. Migrations included: 0000_init, 0001_pink_valkyrie.
 
 BEGIN;
 
 -- ===========================================================================
 -- 1. Schema
 -- ===========================================================================
+
+-- ---- 0000_init ----
 
 CREATE TYPE "public"."alt_points_policy" AS ENUM('CREDIT_MAIN', 'NO_CREDIT');--> statement-breakpoint
 CREATE TYPE "public"."auction_status" AS ENUM('DRAFT', 'OPEN', 'CLOSED', 'SETTLED', 'CANCELLED');--> statement-breakpoint
@@ -299,6 +299,32 @@ CREATE UNIQUE INDEX "users_supabase_user_id_key" ON "users" USING btree ("supaba
 CREATE INDEX "users_guild_idx" ON "users" USING btree ("guild_id");--> statement-breakpoint
 CREATE INDEX "users_status_idx" ON "users" USING btree ("status");
 
+-- ---- 0001_pink_valkyrie ----
+
+CREATE TABLE "guild_invites" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"token_hash" text NOT NULL,
+	"token_lookup" text NOT NULL,
+	"token_hint" text NOT NULL,
+	"note" text,
+	"created_by_user_id" uuid,
+	"expires_at" timestamp with time zone NOT NULL,
+	"redeemed_at" timestamp with time zone,
+	"redeemed_by_user_id" uuid,
+	"guild_id" uuid,
+	"revoked_at" timestamp with time zone,
+	"revoked_by_user_id" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "guild_invites" ADD CONSTRAINT "guild_invites_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "guild_invites" ADD CONSTRAINT "guild_invites_redeemed_by_user_id_users_id_fk" FOREIGN KEY ("redeemed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "guild_invites" ADD CONSTRAINT "guild_invites_guild_id_guilds_id_fk" FOREIGN KEY ("guild_id") REFERENCES "public"."guilds"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "guild_invites" ADD CONSTRAINT "guild_invites_revoked_by_user_id_users_id_fk" FOREIGN KEY ("revoked_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "guild_invites_token_lookup_key" ON "guild_invites" USING btree ("token_lookup");--> statement-breakpoint
+CREATE INDEX "guild_invites_expires_idx" ON "guild_invites" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX "guild_invites_redeemed_idx" ON "guild_invites" USING btree ("redeemed_at");
+
 -- ===========================================================================
 -- 2. Biosuit catalogue
 -- ===========================================================================
@@ -331,7 +357,7 @@ INSERT INTO "biosuits" ("race", "name", "min_level") VALUES
 ON CONFLICT DO NOTHING;
 
 -- ===========================================================================
--- 3. Mark drizzle/0000_init as applied
+-- 3. Mark the migrations as applied
 -- ===========================================================================
 
 CREATE SCHEMA IF NOT EXISTS "drizzle";
@@ -341,5 +367,6 @@ CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
   created_at bigint
 );
 INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ('7dc05c1f8796693b6ad8980361ac6f66333935b29d4ee15d2ff42a9794ae2791', 1786290112764);
+INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES ('b713b043c193351eb4c7a4f7a463cc4e2076a597094452fff61140b3c249b66a', 1786384436182);
 
 COMMIT;

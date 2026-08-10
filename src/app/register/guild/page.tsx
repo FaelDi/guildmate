@@ -1,14 +1,26 @@
-'use client'
-
-import { useActionState } from 'react'
 import Link from 'next/link'
-import { createGuildAction } from '@/app/actions/auth'
-import { CharacterFields } from '@/components/character-fields'
-import { FormMessage, SubmitButton } from '@/components/form'
-import { Field, Input, Panel } from '@/components/ui'
+import { CreateGuildForm } from '@/components/create-guild-form'
+import { Empty, Panel } from '@/components/ui'
+import { INVITE_TTL_HOURS } from '@/lib/rules'
+import { peekInvite } from '@/services/invites'
 
-export default function CreateGuildPage() {
-  const [state, formAction] = useActionState(createGuildAction, null)
+export const dynamic = 'force-dynamic'
+
+/** What the visitor is told before they fill anything in. */
+const REFUSALS: Record<string, string> = {
+  UNKNOWN: 'This invite link is not valid. Ask whoever runs the server for a new one.',
+  EXPIRED: `This invite has expired. They last ${INVITE_TTL_HOURS} hours — ask for a fresh link.`,
+  REDEEMED: 'This invite has already been used. Each one creates exactly one guild.',
+  REVOKED: 'This invite was revoked.',
+}
+
+export default async function CreateGuildPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>
+}) {
+  const token = (await searchParams).token?.trim() ?? ''
+  const status = token ? await peekInvite(token, new Date()) : 'UNKNOWN'
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6 py-16">
@@ -16,37 +28,25 @@ export default function CreateGuildPage() {
         GuildMate
       </Link>
 
-      <Panel
-        title="Create a guild"
-        subtitle="You become the leader. This is the only way a leader is created."
-      >
-        <form action={formAction} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-            <Field label="Guild name">
-              <Input name="guildName" required minLength={3} maxLength={80} />
-            </Field>
-            <Field label="Tag">
-              <Input name="guildTag" maxLength={8} className="sm:w-24" />
-            </Field>
-          </div>
-
-          <Field label="Email">
-            <Input name="email" type="email" required autoComplete="email" />
-          </Field>
-
-          <Field label="Password" hint="At least 10 characters.">
-            <Input name="password" type="password" required minLength={10} autoComplete="new-password" />
-          </Field>
-
-          <div className="border-t border-edge pt-4">
-            <CharacterFields lockKind="MAIN" />
-          </div>
-
-          <FormMessage state={state} />
-
-          <SubmitButton className="w-full">Create guild</SubmitButton>
-        </form>
-      </Panel>
+      {status === 'LIVE' ? (
+        <Panel
+          title="Create a guild"
+          subtitle="You become the leader. This invite is spent the moment the guild exists."
+          tone="ore"
+        >
+          <CreateGuildForm token={token} />
+        </Panel>
+      ) : (
+        <Panel title="Invite required" tone="slag">
+          <Empty>{REFUSALS[status] ?? REFUSALS.UNKNOWN}</Empty>
+          <p className="mt-4 text-center text-xs text-muted">
+            Already have an account?{' '}
+            <Link href="/login" className="text-ore hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </Panel>
+      )}
     </main>
   )
 }

@@ -241,6 +241,52 @@ export const characters = pgTable(
   ],
 )
 
+/**
+ * The only way a guild comes into existence.
+ *
+ * A guild used to be creatable by anyone who found the URL. Now it takes a
+ * single-use link that dies in 24 hours, and the row records who spent it and
+ * what it produced - so every guild on the server traces back to an invite and
+ * to the account that redeemed it.
+ *
+ * The token itself is never stored: `token_hash` is a scrypt digest with the
+ * server pepper mixed in, and `token_lookup` is a blind index so redemption
+ * stays one indexed read.
+ */
+export const guildInvites = pgTable(
+  'guild_invites',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: text('token_hash').notNull(),
+    tokenLookup: text('token_lookup').notNull(),
+    /** Last characters of the token, so two live invites can be told apart. */
+    tokenHint: text('token_hint').notNull(),
+    /** Free text: who asked for it. NULL when minted by the operator CLI. */
+    note: text('note'),
+    /** NULL when the invite was minted outside the app, before any user existed. */
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
+    redeemedByUserId: uuid('redeemed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** The guild this invite produced. The permanent link back to the invite. */
+    guildId: uuid('guild_id').references(() => guilds.id, { onDelete: 'set null' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedByUserId: uuid('revoked_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('guild_invites_token_lookup_key').on(t.tokenLookup),
+    index('guild_invites_expires_idx').on(t.expiresAt),
+    index('guild_invites_redeemed_idx').on(t.redeemedAt),
+  ],
+)
+
 /** Catalogue of selectable biosuits, so the signup form is not free text. */
 export const biosuits = pgTable(
   'biosuits',
@@ -635,6 +681,7 @@ export type Auction = typeof auctions.$inferSelect
 export type AuctionBid = typeof auctionBids.$inferSelect
 export type MarketListing = typeof marketListings.$inferSelect
 export type AuditLogEntry = typeof auditLog.$inferSelect
+export type GuildInvite = typeof guildInvites.$inferSelect
 
 export type UserRole = (typeof userRoleEnum.enumValues)[number]
 export type UserStatus = (typeof userStatusEnum.enumValues)[number]

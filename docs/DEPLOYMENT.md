@@ -80,6 +80,27 @@ Only needed if you enable item screenshots. In **Storage**, create a bucket matc
 `SUPABASE_STORAGE_BUCKET` and leave it **private** — the app streams objects through
 `/api/storage/*` after checking the caller, so public access would defeat the proxy.
 
+## 4b. Create the first guild
+
+A guild is only created from an invite, and a fresh database has nobody who could issue one.
+Mint the first from the operator's machine:
+
+```bash
+APP_ORIGIN=https://<your-app> npm run invite:new -- "who this is for"
+```
+
+It prints the link once — only the digest is stored — and it is good for 24 hours. Whoever
+opens it creates the guild, their leader account and their main character in one step.
+
+To let somebody issue invites from inside the app, promote them to `SUPER_ADMIN`:
+
+```sql
+update users set role = 'SUPER_ADMIN' where lower(email) = lower('you@example.com');
+```
+
+They then get an **Invites** tab. `LEADER` is deliberately not enough: minting an invite
+creates a guild outside any existing one.
+
 ## 5. Deploy to Vercel
 
 ```bash

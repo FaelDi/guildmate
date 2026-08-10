@@ -22,8 +22,19 @@ one, with the detail logged server-side.
 |---|---|---|
 | `signInAction` | public | Calls GoTrue server-side, sets httpOnly cookies. One generic failure message |
 | `registerAction` | public | Creates the Supabase credential + the domain row + the first character |
-| `createGuildAction` | public | Creates a guild and its first `LEADER`. The only path that mints a leader |
+| `createGuildAction` | invite token | Spends a guild invite and creates the guild, its first `LEADER` and that leader's main character. The only path that creates a guild |
 | `signOutAction` | session | Revokes the refresh token and clears cookies |
+
+### `src/app/actions/invites.ts`
+
+| Action | Auth | Notes |
+|---|---|---|
+| `issueInviteAction` | super admin | **Returns the link once.** Only its digest is stored |
+| `revokeInviteAction` | super admin | Kills a live invite. A spent one cannot be revoked |
+
+Minting an invite is not a guild-admin power: it creates a guild *outside* any existing one,
+so a leader able to do it could spawn guilds forever. The first invite on a fresh database
+comes from `npm run invite:new`, which needs database credentials rather than a session.
 
 ### `src/app/actions/characters.ts`
 

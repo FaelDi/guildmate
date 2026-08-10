@@ -711,6 +711,85 @@ export function evaluateListingCreate(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Guild invites
+// ---------------------------------------------------------------------------
+
+/**
+ * A guild is created only from an invite, and the invite dies in a day.
+ *
+ * The window is short on purpose: the token travels in a URL, through chat
+ * apps that keep history, so the realistic threat is not brute force but a
+ * link still working weeks after it was pasted somewhere public.
+ */
+export const INVITE_TTL_HOURS = 24
+
+export type InviteLike = {
+  id: string
+  expiresAt: Date
+  redeemedAt: Date | null
+  revokedAt: Date | null
+}
+
+export type InviteStatus = 'LIVE' | 'REDEEMED' | 'REVOKED' | 'EXPIRED'
+
+export function resolveInviteExpiry(now: Date): Date {
+  return new Date(now.getTime() + INVITE_TTL_HOURS * 3_600_000)
+}
+
+/** What an invite is right now. Ordered so the most permanent state wins. */
+export function describeInviteStatus(invite: InviteLike, now: Date): InviteStatus {
+  if (invite.revokedAt !== null) return 'REVOKED'
+  if (invite.redeemedAt !== null) return 'REDEEMED'
+  if (now.getTime() >= invite.expiresAt.getTime()) return 'EXPIRED'
+  return 'LIVE'
+}
+
+/**
+ * Minting an invite creates a whole new guild, outside any existing one, so it
+ * is not a guild-admin power: a leader who could mint them could spawn guilds
+ * forever. Only a super admin, or the operator's CLI, which has no actor.
+ */
+export function authorizeInviteIssue(actor: Actor): RuleResult<undefined> {
+  if (actor.role !== 'SUPER_ADMIN') {
+    return deny('FORBIDDEN', 'Only a super admin can issue a guild invite')
+  }
+  if (!actor.isActive || actor.status !== 'ACTIVE') {
+    return deny('ACCOUNT_INACTIVE', 'This account is inactive')
+  }
+  return allow(undefined)
+}
+
+/**
+ * Spending an invite.
+ *
+ * `actor` is the signed-in caller, if any. An account already belongs to
+ * exactly one guild, so somebody signed in cannot redeem: doing it would have
+ * to move their account, stranding the characters, points and history that are
+ * scoped to the guild they are leaving. Refusing is the honest answer.
+ */
+export function evaluateInviteRedemption(params: {
+  invite: InviteLike
+  actor: Actor | null
+  now: Date
+}): RuleResult<{ inviteId: string }> {
+  const { invite, actor, now } = params
+
+  if (actor) {
+    return deny(
+      'ALREADY_IN_GUILD',
+      'You already belong to a guild. Sign out and redeem this invite with a new account.',
+    )
+  }
+
+  const status = describeInviteStatus(invite, now)
+  if (status === 'REVOKED') return deny('INVITE_REVOKED', 'This invite was revoked')
+  if (status === 'REDEEMED') return deny('INVITE_USED', 'This invite has already been used')
+  if (status === 'EXPIRED') return deny('INVITE_EXPIRED', 'This invite has expired')
+
+  return allow({ inviteId: invite.id })
+}
+
+// ---------------------------------------------------------------------------
 // Character roster
 // ---------------------------------------------------------------------------
 

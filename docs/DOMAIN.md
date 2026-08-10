@@ -5,6 +5,35 @@ Every rule below is implemented as a pure function in `src/lib/rules.ts` and cov
 
 ---
 
+## Guilds are created from an invite
+
+A guild exists only because somebody spent an invite. There is no other code path that
+inserts into `guilds`.
+
+| Rule | Function | Denial |
+|---|---|---|
+| The link dies 24 hours after it is issued | `resolveInviteExpiry` | `INVITE_EXPIRED` |
+| One link, one guild | `evaluateInviteRedemption` | `INVITE_USED` |
+| A leaked link can be killed before anyone spends it | `evaluateInviteRedemption` | `INVITE_REVOKED` |
+| Only a super admin issues one | `authorizeInviteIssue` | `FORBIDDEN` |
+| Somebody already in a guild cannot redeem | `evaluateInviteRedemption` | `ALREADY_IN_GUILD` |
+
+That last rule is a schema fact, not a policy preference: an account belongs to exactly one
+guild (`users.guild_id`), and its characters, points and history are scoped to that guild.
+Letting a signed-in member redeem would have to move their account and strand all of it, so
+redemption is for a brand-new account — the guild, the leader and their main character are
+created in one transaction, or not at all.
+
+The token is never stored. `token_hash` is a scrypt digest with the server pepper mixed in
+and `token_lookup` is a blind index, so redemption is one indexed read and a database dump
+does not yield a working link. The row keeps the receipt: who issued it, who spent it, and
+which guild it produced.
+
+The invite is marked spent **inside the same transaction as the guild**, with the row locked,
+so two people opening the same link at the same moment cannot produce two guilds.
+
+---
+
 ## Accounts and characters
 
 An **account** (`users`) holds credentials (in Supabase Auth), a role and a state. It owns

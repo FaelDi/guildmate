@@ -126,6 +126,44 @@ export function eventCodeLookup(code: string): string {
 }
 
 /**
+ * Guild invite tokens.
+ *
+ * Unlike a join code, nobody reads one aloud - it travels inside a URL - so it
+ * is long and URL-safe rather than short and pronounceable. 32 characters of
+ * this alphabet is ~160 bits, which puts brute force out of reach even though
+ * the invite endpoint is unauthenticated by definition.
+ */
+const INVITE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+export function generateInviteToken(length = 32): string {
+  let token = ''
+  for (let i = 0; i < length; i += 1) {
+    token += INVITE_ALPHABET[randomInt(INVITE_ALPHABET.length)]
+  }
+  return token
+}
+
+/** Case matters here: the token is machine-handled, never typed from memory. */
+function normalizeInviteToken(token: string): string {
+  return token.trim()
+}
+
+export async function hashInviteToken(token: string): Promise<string> {
+  return hashSecret(`invite::${normalizeInviteToken(token)}::${pepper()}`)
+}
+
+export async function verifyInviteToken(token: string, digest: string): Promise<boolean> {
+  return verifySecret(`invite::${normalizeInviteToken(token)}::${pepper()}`, digest)
+}
+
+/** Blind index, so redemption is one indexed lookup instead of a table scan. */
+export function inviteTokenLookup(token: string): string {
+  return createHmac('sha256', pepper() || 'guildmate-dev-pepper')
+    .update(`invite::${normalizeInviteToken(token)}`)
+    .digest('hex')
+}
+
+/**
  * One-way fingerprint for correlating registrations without storing the raw IP
  * or user agent. Keyed with the same pepper so the values are not rainbow-table
  * reversible.

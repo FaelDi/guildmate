@@ -35,7 +35,14 @@ npm run db:seed                # biosuit catalogue
 npm run dev
 ```
 
-Open <http://localhost:3000> and use **Create a guild** to make the first leader account.
+A guild is only created from an invite. Mint the first one from your machine:
+
+```bash
+npm run invite:new -- "who this is for"
+```
+
+That prints a single-use link, good for 24 hours. Open it to create the guild, its leader
+account and that leader's main character in one step.
 
 ## Commands
 
@@ -45,6 +52,7 @@ Open <http://localhost:3000> and use **Create a guild** to make the first leader
 | `npm test` | Vitest suite |
 | `npm run build` | Production build — **this is the deploy gate** |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run invite:new` | Issue a single-use guild invite link (24h) |
 | `npm run db:generate` | Generate a migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:studio` | Drizzle Studio |

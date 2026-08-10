@@ -3,12 +3,9 @@
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { AppError, runAction, type ActionResult } from '@/lib/errors'
-import {
-  createGuildWithLeader,
-  registerAccount,
-  signIn,
-  signOutCurrent,
-} from '@/services/accounts'
+import { getSessionContext } from '@/lib/session'
+import { registerAccount, signIn, signOutCurrent } from '@/services/accounts'
+import { redeemInviteAndCreateGuild } from '@/services/invites'
 
 /**
  * Every auth call goes through these server actions, which talk to Supabase
@@ -80,16 +77,25 @@ export async function createGuildAction(
 ): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
     try {
-      await createGuildWithLeader({
-        guildName: String(formData.get('guildName') ?? ''),
-        guildTag: String(formData.get('guildTag') ?? '') || undefined,
-        email: String(formData.get('email') ?? ''),
-        password: String(formData.get('password') ?? ''),
-        characterName: String(formData.get('characterName') ?? ''),
-        race: String(formData.get('race') ?? 'BELLATO') as 'BELLATO' | 'CORA' | 'ACCRETIA',
-        biosuit: String(formData.get('biosuit') ?? ''),
-        level: Number(formData.get('level') ?? 1),
-        kind: 'MAIN',
+      // The token comes from the URL, so it is attacker-controlled like any
+      // other form field: the service is what proves it is live and unspent.
+      const session = await getSessionContext()
+
+      await redeemInviteAndCreateGuild({
+        actor: session?.actor ?? null,
+        now: session?.now ?? new Date(),
+        input: {
+          token: String(formData.get('token') ?? ''),
+          guildName: String(formData.get('guildName') ?? ''),
+          guildTag: String(formData.get('guildTag') ?? '') || undefined,
+          email: String(formData.get('email') ?? ''),
+          password: String(formData.get('password') ?? ''),
+          characterName: String(formData.get('characterName') ?? ''),
+          race: String(formData.get('race') ?? 'BELLATO') as 'BELLATO' | 'CORA' | 'ACCRETIA',
+          biosuit: String(formData.get('biosuit') ?? ''),
+          level: Number(formData.get('level')) || 0,
+          kind: 'MAIN',
+        },
       })
       await signIn({
         email: String(formData.get('email') ?? ''),

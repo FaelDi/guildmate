@@ -9,15 +9,18 @@ import { Badge } from '@/components/ui'
 import { isGuildAdmin } from '@/lib/rules'
 import { getSessionContext } from '@/lib/session'
 
-const NAV: (NavItem & { adminOnly: boolean })[] = [
-  { href: '/dashboard', label: 'Dashboard', adminOnly: false },
-  { href: '/profile', label: 'Characters', adminOnly: false },
-  { href: '/events', label: 'Events', adminOnly: false },
-  { href: '/auctions', label: 'Auctions', adminOnly: false },
-  { href: '/market', label: 'Store', adminOnly: false },
-  { href: '/admin', label: 'Members', adminOnly: true },
-  { href: '/admin/events', label: 'Event admin', adminOnly: true },
-  { href: '/admin/log', label: 'Audit', adminOnly: true },
+type Visibility = 'everyone' | 'admin' | 'superAdmin'
+
+const NAV: (NavItem & { visibleTo: Visibility })[] = [
+  { href: '/dashboard', label: 'Dashboard', visibleTo: 'everyone' },
+  { href: '/profile', label: 'Characters', visibleTo: 'everyone' },
+  { href: '/events', label: 'Events', visibleTo: 'everyone' },
+  { href: '/auctions', label: 'Auctions', visibleTo: 'everyone' },
+  { href: '/market', label: 'Store', visibleTo: 'everyone' },
+  { href: '/admin', label: 'Members', visibleTo: 'admin' },
+  { href: '/admin/events', label: 'Event admin', visibleTo: 'admin' },
+  { href: '/admin/log', label: 'Audit', visibleTo: 'admin' },
+  { href: '/admin/invites', label: 'Invites', visibleTo: 'superAdmin' },
 ]
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -45,7 +48,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
           </Link>
 
-          <NavLinks items={NAV.filter((item) => !item.adminOnly || admin)} />
+          <NavLinks
+            items={NAV.filter((item) => {
+              if (item.visibleTo === 'superAdmin') return actor.role === 'SUPER_ADMIN'
+              if (item.visibleTo === 'admin') return admin
+              return true
+            })}
+          />
 
           <div className="ml-auto flex items-center gap-3">
             <Badge value={actor.role} />
