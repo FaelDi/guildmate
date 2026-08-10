@@ -1,0 +1,39 @@
+# Agent company (local-only management layer — never commit)
+.company
+
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Next.js
+.next
+out
+build
+next-env.d.ts
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Environment
+.env
+.env*.local
+!.env.example
+
+# Test / coverage
+coverage
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Scratch
+company-template
