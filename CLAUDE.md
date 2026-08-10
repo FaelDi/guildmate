@@ -290,9 +290,11 @@ Never hand-edit a generated migration that has already been applied.
 
 ### Branching
 
-- **NEVER** commit, push or make any change directly on `main`.
-- Work on `develop`, or a feature branch off `develop`.
-- `main` is production and protected: it receives code exclusively through a reviewed PR.
+- **Commit and push straight to `main`.** It is the default branch and what Vercel deploys
+  to production. No PR, no `develop`, no feature branch is required.
+- Because a push to `main` is a production deploy, the gate in Phase 5 is not optional:
+  `npm test` and `npm run build` must both pass **before** the push. There is no reviewer
+  between the commit and the users.
 - Stage **explicit paths**. Never `git add -A` — the repo has untracked files (including
   `.company/` and `company-template/`) that must not be swept in.
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.

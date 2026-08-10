@@ -113,8 +113,12 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://<your-app>/api/cron/sweep
 
 ## 7. Branches
 
-- `develop` — integration. Every push builds a Vercel preview.
-- `main` — production, PR-only. Never push to it directly.
+`main` is the only branch. It is the repository default and Vercel's production branch, and
+it is pushed to directly — every push deploys.
+
+That makes `npm test` and `npm run build` the release process, not a formality: nothing sits
+between a commit and the guild using it. Any other branch you push builds a Vercel preview
+and deploys nothing.
 
 ## 8. Rollback
 
