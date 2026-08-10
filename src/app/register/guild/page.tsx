@@ -12,7 +12,7 @@ export default function CreateGuildPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6 py-16">
-      <Link href="/" className="mb-6 font-mono text-[11px] uppercase tracking-[0.3em] text-plasma">
+      <Link href="/" className="mb-6 font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
         GuildMate
       </Link>
 

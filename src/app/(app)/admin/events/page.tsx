@@ -59,7 +59,7 @@ export default async function AdminEventsPage() {
             {events.map((event) => (
               <tr key={event.id}>
                 <td className="px-3 py-2.5 font-medium text-ink">{event.name}</td>
-                <td className="px-3 py-2.5 font-mono tabular-nums text-plasma">
+                <td className="px-3 py-2.5 font-mono tabular-nums text-ore">
                   {event.pointsValue}
                 </td>
                 <td className="px-3 py-2.5">
@@ -131,7 +131,7 @@ export default async function AdminEventsPage() {
                 <td className="px-3 py-2.5 text-xs text-muted">{registration.userEmail}</td>
                 <td className="px-3 py-2.5 text-[10px] uppercase tracking-wider text-muted">
                   {registration.source === 'ADMIN_GRANT' ? (
-                    <span className="text-ember">admin</span>
+                    <span className="text-ore">admin</span>
                   ) : (
                     'code'
                   )}

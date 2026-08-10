@@ -1,19 +1,35 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-void: #07080d;
-  --color-panel: #10131c;
-  --color-panel-raised: #171b27;
-  --color-edge: #232838;
-  --color-ink: #e8ebf5;
-  --color-muted: #8b93a9;
-  --color-plasma: #6ee7ff;
-  --color-ember: #ff8a4c;
-  --color-toxic: #9dff5c;
-  --color-blood: #ff5c78;
+/**
+ * The portal is a field terminal for a war over a mine, not a dashboard.
+ *
+ * One idea carries the design: points are ore, and ore has a state. Raw
+ * (PENDING) is amber, refined (CONFIRMED, spendable) is teal, slag (REVERSED)
+ * is red. Colour is never decoration here - if a number is amber on this
+ * screen, it is not spendable yet.
+ */
 
-  --font-display: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
-  --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+@theme {
+  --color-void: #04060a;
+  --color-panel: #0a0e16;
+  --color-panel-raised: #111726;
+  --color-edge: #1c2432;
+  --color-ink: #e9edf6;
+  --color-muted: #79839a;
+
+  /* The point lifecycle. */
+  --color-ore: #ff9d2e;
+  --color-refined: #5ee0b0;
+  --color-slag: #ff4d5e;
+
+  /* The three nations. Race badges only. */
+  --color-bellato: #ffcf5c;
+  --color-cora: #b47cff;
+  --color-accretia: #8fa3bd;
+
+  --font-display: var(--font-oxanium), 'Segoe UI', system-ui, sans-serif;
+  --font-body: var(--font-plex-sans), 'Segoe UI', system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
 html {
@@ -22,15 +38,92 @@ html {
 
 body {
   background:
-    radial-gradient(1100px 520px at 12% -8%, color-mix(in oklab, var(--color-plasma) 11%, transparent), transparent),
-    radial-gradient(880px 480px at 92% 4%, color-mix(in oklab, var(--color-ember) 8%, transparent), transparent),
+    /* the mine, glowing from below */
+    radial-gradient(1200px 420px at 50% 118%, color-mix(in oklab, var(--color-ore) 13%, transparent), transparent),
+    radial-gradient(900px 500px at 88% -10%, color-mix(in oklab, var(--color-cora) 7%, transparent), transparent),
     var(--color-void);
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-body);
   min-height: 100dvh;
 }
 
-/* A single hairline rule reused across panels, so the whole UI shares one edge. */
-.hairline {
-  border: 1px solid var(--color-edge);
+/* Survey grid: present, never legible. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-edge) 60%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-edge) 60%, transparent) 1px, transparent 1px);
+  background-size: 88px 88px;
+  mask-image: radial-gradient(circle at 50% 25%, #000 0%, transparent 75%);
+  opacity: 0.55;
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+/**
+ * The signature: a cut corner.
+ *
+ * Panels lose the top-right, controls lose the bottom-left, so a readout and a
+ * switch are distinguishable by silhouette alone - which is what a HUD does
+ * and a dashboard does not.
+ */
+.notch-panel {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+.notch-control {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+}
+
+/* The mark that says a panel is a bounded instrument, not a card. */
+.tick::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 11px;
+  height: 11px;
+  border-left: 2px solid color-mix(in oklab, var(--color-ore) 75%, transparent);
+  border-top: 2px solid color-mix(in oklab, var(--color-ore) 75%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ore);
+  outline-offset: 2px;
+}
+
+/* One sweep, on the landing hero. Nothing else on the site moves by itself. */
+@keyframes sweep {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(760%);
+  }
+}
+
+.sweep {
+  animation: sweep 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .sweep {
+    display: none;
+  }
 }

@@ -39,13 +39,13 @@ export default async function DashboardPage() {
         <Stat
           label="Spendable points"
           value={balance.available}
-          tone="plasma"
+          tone="refined"
           hint="Usable in auctions. Active bids are already deducted."
         />
         <Stat
           label="Pending points"
           value={balance.pending}
-          tone="ember"
+          tone="ore"
           hint="Waiting on their event to reach quorum."
         />
         <Stat label="Characters" value={characters.length} />
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
       <Panel
         title="Your characters"
         action={
-          <Link href="/profile" className="text-xs text-plasma hover:underline">
+          <Link href="/profile" className="text-xs text-ore hover:underline">
             Manage roster
           </Link>
         }
@@ -83,7 +83,9 @@ export default async function DashboardPage() {
                 <td className="px-3 py-2.5">
                   <Badge value={character.kind} />
                 </td>
-                <td className="px-3 py-2.5 text-muted">{character.race}</td>
+                <td className="px-3 py-2.5">
+                  <Badge value={character.race} />
+                </td>
                 <td className="px-3 py-2.5 text-muted">{character.biosuit}</td>
                 <td className="px-3 py-2.5 font-mono tabular-nums text-muted">{character.level}</td>
               </tr>
@@ -104,7 +106,7 @@ export default async function DashboardPage() {
                 </td>
                 <td
                   className={`px-3 py-2.5 font-mono tabular-nums ${
-                    entry.amount < 0 ? 'text-blood' : 'text-toxic'
+                    entry.amount < 0 ? 'text-slag' : 'text-refined'
                   }`}
                 >
                   {entry.amount > 0 ? '+' : ''}

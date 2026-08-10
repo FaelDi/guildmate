@@ -43,13 +43,13 @@ export default async function MarketPage() {
                 <td className="px-3 py-2.5 font-mono tabular-nums text-muted">
                   {listing.quantity}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 font-mono tabular-nums text-plasma">
+                <td className="whitespace-nowrap px-3 py-2.5 font-mono tabular-nums text-ore">
                   {listing.priceDiamonds.toLocaleString('en-US')} 💎
                 </td>
                 <td className="px-3 py-2.5 text-xs text-muted">
                   {listing.sellerCharacterName}
                   {listing.sellerUserId === actor.id && (
-                    <span className="ml-1.5 text-[10px] uppercase tracking-wider text-plasma">
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wider text-ore">
                       you
                     </span>
                   )}

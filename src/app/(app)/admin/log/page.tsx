@@ -40,7 +40,7 @@ export default async function AuditLogPage() {
                 {entry.createdAt.toISOString().slice(0, 16).replace('T', ' ')}
               </td>
               <td className="px-3 py-2.5 text-xs text-muted">
-                {entry.actorEmail ?? <span className="text-plasma">system</span>}
+                {entry.actorEmail ?? <span className="text-ore">system</span>}
               </td>
               <td className="px-3 py-2.5 font-mono text-xs text-ink">{entry.action}</td>
               <td className="px-3 py-2.5 text-xs text-muted">{entry.entityType}</td>

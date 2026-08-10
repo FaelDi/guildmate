@@ -38,7 +38,9 @@ export default async function ProfilePage() {
                 <td className="px-3 py-2.5">
                   <Badge value={character.kind} />
                 </td>
-                <td className="px-3 py-2.5 text-muted">{character.race}</td>
+                <td className="px-3 py-2.5">
+                  <Badge value={character.race} />
+                </td>
                 <td className="px-3 py-2.5 text-muted">{character.biosuit}</td>
                 <td className="px-3 py-2.5 font-mono tabular-nums text-muted">{character.level}</td>
                 <td className="px-3 py-2.5 align-top">

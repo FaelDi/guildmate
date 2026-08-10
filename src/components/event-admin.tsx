@@ -18,12 +18,12 @@ import { Field, Input, Select, Textarea } from '@/components/ui'
  */
 function CodeReveal({ code }: { code: string }) {
   return (
-    <div className="rounded-md border border-toxic/40 bg-toxic/10 px-4 py-3">
-      <p className="text-[10px] uppercase tracking-[0.14em] text-toxic">
+    <div className="notch-control border border-refined/40 bg-refined/10 px-4 py-3">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-refined">
         Join code — shown only once
       </p>
-      <p className="mt-1 font-mono text-3xl tracking-[0.3em] text-toxic">{code}</p>
-      <p className="mt-1.5 text-[11px] text-toxic/80">
+      <p className="mt-1 font-mono text-3xl tracking-[0.3em] text-refined">{code}</p>
+      <p className="mt-1.5 text-[11px] text-refined/80">
         Announce it now. It is stored hashed and cannot be recovered.
       </p>
     </div>
@@ -104,7 +104,7 @@ export function EventRowActions({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded border border-edge px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:border-muted/60 hover:text-ink"
+        className="notch-control border border-edge px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:border-muted/60 hover:text-ink"
       >
         Manage
       </button>
@@ -112,7 +112,7 @@ export function EventRowActions({
   }
 
   return (
-    <div className="w-72 space-y-4 rounded-md border border-edge bg-void/70 p-3">
+    <div className="w-72 space-y-4 notch-control border border-edge bg-void/70 p-3">
       <div className="flex justify-end">
         <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">
           close

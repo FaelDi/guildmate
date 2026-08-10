@@ -28,7 +28,7 @@ export default async function AuctionsPage() {
         <Stat
           label="Spendable points"
           value={balance.available}
-          tone="plasma"
+          tone="refined"
           hint="Bids you are winning are already deducted."
         />
         <Stat label="Open auctions" value={open.length} />
@@ -45,7 +45,7 @@ export default async function AuctionsPage() {
             {open.map((auction) => (
               <li
                 key={auction.id}
-                className="rounded-md border border-edge bg-panel-raised/50 px-4 py-3.5"
+                className="notch-control border border-edge bg-panel-raised/50 px-4 py-3.5"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -62,7 +62,7 @@ export default async function AuctionsPage() {
                     <p className="mt-1.5 text-[11px] text-muted">
                       Ends {auction.endsAt.toISOString().slice(0, 16).replace('T', ' ')} UTC
                       {auction.currentBidderUserId === actor.id && (
-                        <span className="ml-2 text-toxic">you are winning</span>
+                        <span className="ml-2 text-refined">you are winning</span>
                       )}
                     </p>
                   </div>
@@ -71,7 +71,7 @@ export default async function AuctionsPage() {
                     <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
                       {auction.currentBid === null ? 'Starting bid' : 'Current bid'}
                     </div>
-                    <div className="font-mono text-xl tabular-nums text-plasma">
+                    <div className="font-mono text-xl tabular-nums text-ore">
                       {auction.currentBid ?? auction.startingBid}
                     </div>
                     <div className="text-[10px] text-muted">
@@ -99,7 +99,7 @@ export default async function AuctionsPage() {
             {closed.map((auction) => (
               <li
                 key={auction.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-edge px-4 py-2.5 text-sm"
+                className="flex flex-wrap items-center justify-between gap-3 notch-control border border-edge px-4 py-2.5 text-sm"
               >
                 <span className="text-muted">{auction.itemName}</span>
                 <span className="flex items-center gap-3">

@@ -16,18 +16,18 @@ export function SubmitButton({
   const { pending } = useFormStatus()
 
   const variants = {
-    primary: 'bg-plasma/15 border-plasma/50 text-plasma hover:bg-plasma/25',
-    ghost: 'bg-transparent border-edge text-muted hover:text-ink hover:border-muted/60',
-    danger: 'bg-blood/12 border-blood/45 text-blood hover:bg-blood/20',
+    primary: 'border-ore/55 bg-ore/12 text-ore hover:bg-ore/22',
+    ghost: 'border-edge bg-transparent text-muted hover:border-muted/60 hover:text-ink',
+    danger: 'border-slag/50 bg-slag/12 text-slag hover:bg-slag/20',
   }[variant]
 
   return (
     <button
       type="submit"
       disabled={pending}
-      className={`inline-flex items-center justify-center rounded-md border px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.1em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants} ${className}`}
+      className={`notch-control inline-flex items-center justify-center border px-4 py-2 font-display text-xs font-semibold uppercase tracking-[0.16em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants} ${className}`}
     >
-      {pending ? 'Working...' : children}
+      {pending ? 'Working' : children}
     </button>
   )
 }
@@ -49,7 +49,7 @@ export function FormMessage({
     return (
       <p
         role="alert"
-        className="rounded-md border border-blood/40 bg-blood/10 px-3 py-2 text-xs text-blood"
+        className="notch-control border border-slag/45 bg-slag/10 px-3 py-2 text-xs leading-relaxed text-slag"
       >
         {state.message}
       </p>
@@ -58,7 +58,7 @@ export function FormMessage({
 
   if (!success) return null
   return (
-    <div className="rounded-md border border-toxic/40 bg-toxic/10 px-3 py-2 text-xs text-toxic">
+    <div className="notch-control border border-refined/45 bg-refined/10 px-3 py-2 text-xs leading-relaxed text-refined">
       {success}
     </div>
   )

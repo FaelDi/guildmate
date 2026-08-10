@@ -4,11 +4,12 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { guilds } from '@/db/schema'
 import { signOutAction } from '@/app/actions/auth'
+import { NavLinks, type NavItem } from '@/components/nav-links'
 import { Badge } from '@/components/ui'
 import { isGuildAdmin } from '@/lib/rules'
 import { getSessionContext } from '@/lib/session'
 
-const NAV = [
+const NAV: (NavItem & { adminOnly: boolean })[] = [
   { href: '/dashboard', label: 'Dashboard', adminOnly: false },
   { href: '/profile', label: 'Characters', adminOnly: false },
   { href: '/events', label: 'Events', adminOnly: false },
@@ -32,42 +33,34 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-20 border-b border-edge bg-void/85 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-edge bg-void/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
-          <Link href="/dashboard" className="font-mono text-[11px] uppercase tracking-[0.3em] text-plasma">
-            GuildMate
+          <Link href="/dashboard" className="group flex items-baseline gap-2.5">
+            <span className="font-display text-sm font-bold uppercase tracking-[0.26em] text-ore">
+              GuildMate
+            </span>
+            <span className="font-mono text-[11px] text-muted">
+              {guild?.name ?? 'Guild'}
+              {guild?.tag && <span className="ml-1.5 text-muted/70">[{guild.tag}]</span>}
+            </span>
           </Link>
 
-          <span className="text-xs text-muted">
-            {guild?.name ?? 'Guild'}
-            {guild?.tag && <span className="ml-1.5 font-mono text-muted/70">[{guild.tag}]</span>}
-          </span>
-
-          <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-            {NAV.filter((item) => !item.adminOnly || admin).map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-muted transition-colors hover:text-ink"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <NavLinks items={NAV.filter((item) => !item.adminOnly || admin)} />
 
           <div className="ml-auto flex items-center gap-3">
             <Badge value={actor.role} />
-            <span className="hidden text-xs text-muted sm:inline">{user.email}</span>
+            <span className="hidden font-mono text-[11px] text-muted sm:inline">{user.email}</span>
             <form action={signOutAction}>
               <button
                 type="submit"
-                className="rounded border border-edge px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:border-blood/50 hover:text-blood"
+                className="notch-control border border-edge px-2.5 py-1 font-display text-[10px] font-semibold uppercase tracking-[0.14em] text-muted transition-colors hover:border-slag/50 hover:text-slag"
               >
                 Sign out
               </button>
             </form>
           </div>
         </div>
+        <div aria-hidden className="h-px w-full bg-gradient-to-r from-ore/50 via-edge to-transparent" />
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>

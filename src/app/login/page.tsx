@@ -11,7 +11,7 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-16">
-      <Link href="/" className="mb-6 font-mono text-[11px] uppercase tracking-[0.3em] text-plasma">
+      <Link href="/" className="mb-6 font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
         GuildMate
       </Link>
 
@@ -33,7 +33,7 @@ export default function LoginPage() {
 
       <p className="mt-5 text-center text-xs text-muted">
         No account yet?{' '}
-        <Link href="/register" className="text-plasma hover:underline">
+        <Link href="/register" className="text-ore hover:underline">
           Join a guild
         </Link>
       </p>

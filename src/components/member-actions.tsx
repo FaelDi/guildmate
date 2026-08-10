@@ -26,7 +26,7 @@ export function MemberActions({ member }: { member: Member }) {
   const [revokeState, revokeAction] = useActionState(revokeAccessAction, null)
 
   if (member.deletedAt) {
-    return <span className="text-[11px] uppercase tracking-wider text-blood">access revoked</span>
+    return <span className="text-[11px] uppercase tracking-wider text-slag">access revoked</span>
   }
 
   if (!open) {
@@ -34,7 +34,7 @@ export function MemberActions({ member }: { member: Member }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded border border-edge px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:border-muted/60 hover:text-ink"
+        className="notch-control border border-edge px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:border-muted/60 hover:text-ink"
       >
         Manage
       </button>
@@ -42,7 +42,7 @@ export function MemberActions({ member }: { member: Member }) {
   }
 
   return (
-    <div className="w-80 space-y-4 rounded-md border border-edge bg-void/70 p-3">
+    <div className="w-80 space-y-4 notch-control border border-edge bg-void/70 p-3">
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-[0.14em] text-muted">
           Manage {member.email}

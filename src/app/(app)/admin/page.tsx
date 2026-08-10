@@ -19,8 +19,8 @@ export default async function AdminMembersPage() {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-4">
         <Stat label="Members" value={members.length} />
-        <Stat label="Active" value={active} tone="toxic" />
-        <Stat label="Restricted" value={banned} tone="ember" />
+        <Stat label="Active" value={active} tone="refined" />
+        <Stat label="Restricted" value={banned} tone="ore" />
         <Stat label="Live restrictions" value={restrictions.length} />
       </div>
 
@@ -56,9 +56,9 @@ export default async function AdminMembersPage() {
                   {member.registrationCount}
                 </td>
                 <td className="px-3 py-2.5 font-mono text-xs tabular-nums">
-                  <span className="text-plasma">{member.availablePoints}</span>
+                  <span className="text-ore">{member.availablePoints}</span>
                   <span className="text-muted"> / </span>
-                  <span className="text-ember">{member.pendingPoints}</span>
+                  <span className="text-ore">{member.pendingPoints}</span>
                 </td>
                 <td className="px-3 py-2.5 align-top">
                   <MemberActions
@@ -96,7 +96,7 @@ export default async function AdminMembersPage() {
                   {restriction.expiresAt ? (
                     restriction.expiresAt.toISOString().slice(0, 10)
                   ) : (
-                    <span className="text-blood">permanent</span>
+                    <span className="text-slag">permanent</span>
                   )}
                 </td>
               </tr>
