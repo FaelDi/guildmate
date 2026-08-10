@@ -15,6 +15,13 @@
       "when": 1786384436182,
       "tag": "0001_pink_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786386039300,
+      "tag": "0002_spotty_the_twelve",
+      "breakpoints": true
     }
   ]
 }

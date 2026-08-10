@@ -90,57 +90,9 @@ export function Stat({
   )
 }
 
-const BADGE_TONES: Record<string, string> = {
-  // Point and event lifecycle.
-  PENDING: 'border-ore/45 bg-ore/10 text-ore',
-  PENDING_CONFIRMATION: 'border-ore/45 bg-ore/10 text-ore',
-  OPEN: 'border-ore/45 bg-ore/10 text-ore',
-  CONFIRMED: 'border-refined/45 bg-refined/10 text-refined',
-  SETTLED: 'border-refined/45 bg-refined/10 text-refined',
-  ACTIVE: 'border-refined/45 bg-refined/10 text-refined',
-  SOLD: 'border-refined/45 bg-refined/10 text-refined',
-  CANCELLED: 'border-slag/45 bg-slag/10 text-slag',
-  REVERSED: 'border-slag/45 bg-slag/10 text-slag',
-  BANNED: 'border-slag/45 bg-slag/10 text-slag',
-  DELETED: 'border-slag/55 bg-slag/15 text-slag',
-  EXPIRED: 'border-edge bg-panel-raised text-muted',
-  INACTIVE: 'border-edge bg-panel-raised text-muted',
+/** The status chip lives in its own client module: it reads the dictionary. */
+export { Badge } from "./badge"
 
-  // Item rarity.
-  LEGENDARY: 'border-ore/55 bg-ore/12 text-ore',
-  EPIC: 'border-cora/50 bg-cora/12 text-cora',
-  RARE: 'border-accretia/50 bg-accretia/12 text-accretia',
-  UNCOMMON: 'border-refined/40 bg-refined/8 text-refined',
-  COMMON: 'border-edge bg-panel-raised text-muted',
-
-  // Roster.
-  MAIN: 'border-ore/45 bg-ore/10 text-ore',
-  ALT: 'border-edge bg-panel-raised text-muted',
-
-  // The three nations.
-  BELLATO: 'border-bellato/45 bg-bellato/10 text-bellato',
-  CORA: 'border-cora/45 bg-cora/10 text-cora',
-  ACCRETIA: 'border-accretia/45 bg-accretia/12 text-accretia',
-
-  // Rank.
-  LEADER: 'border-ore/50 bg-ore/12 text-ore',
-  VICE_LEADER: 'border-cora/45 bg-cora/10 text-cora',
-  SUPER_ADMIN: 'border-slag/45 bg-slag/10 text-slag',
-  MEMBER: 'border-edge bg-panel-raised text-muted',
-}
-
-export function Badge({ value, children }: { value: string; children?: ReactNode }) {
-  const tone = BADGE_TONES[value] ?? 'border-edge bg-panel-raised text-muted'
-  return (
-    <span
-      className={`inline-flex items-center border px-1.5 py-0.5 font-mono text-[10px] uppercase leading-4 tracking-wider ${tone}`}
-    >
-      {children ?? value.replace(/_/g, ' ')}
-    </span>
-  )
-}
-
-/** The small uppercase line that says what a region of the screen is. */
 export function Eyebrow({ children }: { children: ReactNode }) {
   return (
     <p className="font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-ore">
@@ -185,7 +137,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   return <textarea {...props} className={`${CONTROL} min-h-20 ${props.className ?? ''}`} />
 }
 
-export function Table({ head, children }: { head: string[]; children: ReactNode }) {
+export function Table({ head, children }: { head: readonly string[]; children: ReactNode }) {
   return (
     <div className="-mx-5 overflow-x-auto px-5">
       <table className="w-full min-w-max border-collapse text-sm">

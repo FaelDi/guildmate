@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { JoinGuildForm } from '@/components/join-guild-form'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { listGuildDirectory } from '@/services/accounts'
 
 export const dynamic = 'force-dynamic'
 
 export default async function RegisterPage() {
+  const t = await getDictionary()
   const directory = await listGuildDirectory()
   const joinable = directory.filter((guild) => guild.isActive)
 
@@ -17,7 +19,7 @@ export default async function RegisterPage() {
         </Link>
       </div>
 
-      <Panel title="Join a guild" subtitle="Your account and your first character.">
+      <Panel title={t.auth.joinTitle} subtitle={t.auth.joinSubtitle}>
         <JoinGuildForm
           guilds={joinable.map((guild) => ({
             slug: guild.slug,
@@ -27,21 +29,21 @@ export default async function RegisterPage() {
         />
 
         <p className="mt-5 text-xs text-muted">
-          Already a member?{' '}
+          {t.auth.alreadyMember}{' '}
           <Link href="/login" className="text-ore hover:underline">
-            Sign in
+            {t.common.signIn}
           </Link>
         </p>
       </Panel>
 
       <Panel
-        title="Guild directory"
-        subtitle="Headcount only. Who is in a guild is visible to its members, not to the public."
+        title={t.auth.directoryTitle}
+        subtitle={t.auth.directorySubtitle}
       >
         {directory.length === 0 ? (
-          <Empty>No guild has been created yet.</Empty>
+          <Empty>{t.auth.directoryEmpty}</Empty>
         ) : (
-          <Table head={['Guild', 'Status', 'Members', 'Active', 'Restricted']}>
+          <Table head={t.auth.directoryHead}>
             {directory.map((guild) => (
               <tr key={guild.id}>
                 <td className="px-3 py-2.5">

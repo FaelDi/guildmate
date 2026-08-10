@@ -153,7 +153,8 @@ export const guildSettings = pgTable('guild_settings', {
   /** Hours after creation before an under-quorum event is auto-cancelled. */
   confirmationWindowHours: integer('confirmation_window_hours').notNull().default(48),
   /** Default lifetime of an event join code, in minutes. */
-  defaultCodeTtlMinutes: integer('default_code_ttl_minutes').notNull().default(30),
+  /** One hour: long enough for latecomers, short enough that a leaked code dies. */
+  defaultCodeTtlMinutes: integer('default_code_ttl_minutes').notNull().default(60),
   /** Hard cap on the join-code lifetime an admin may pick. */
   maxCodeTtlMinutes: integer('max_code_ttl_minutes').notNull().default(720),
   /** Per-account cap on self-code registrations in a rolling 24h window. */

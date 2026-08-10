@@ -1,5 +1,6 @@
 import { BidForm } from '@/components/bid-form'
 import { Badge, Empty, Panel, Stat } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { requireSession } from '@/lib/session'
 import { listOwnCharacters } from '@/services/accounts'
 import { listAuctions } from '@/services/auctions'
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AuctionsPage() {
   const { actor, now } = await requireSession()
+  const t = await getDictionary()
   const [auctions, characters, balance] = await Promise.all([
     listAuctions(actor.guildId),
     listOwnCharacters(actor.id),
@@ -26,20 +28,20 @@ export default async function AuctionsPage() {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <Stat
-          label="Spendable points"
+          label={t.auctions.spendable}
           value={balance.available}
           tone="refined"
-          hint="Bids you are winning are already deducted."
+          hint={t.auctions.spendableHint}
         />
-        <Stat label="Open auctions" value={open.length} />
+        <Stat label={t.auctions.openCount} value={open.length} />
       </div>
 
       <Panel
-        title="Open auctions"
-        subtitle="Paid with confirmed event points. A bid inside the closing window extends the clock."
+        title={t.auctions.openTitle}
+        subtitle={t.auctions.openSubtitle}
       >
         {open.length === 0 ? (
-          <Empty>No auctions are running.</Empty>
+          <Empty>{t.auctions.empty}</Empty>
         ) : (
           <ul className="space-y-4">
             {open.map((auction) => (
@@ -60,22 +62,22 @@ export default async function AuctionsPage() {
                       <p className="mt-1 max-w-lg text-xs text-muted">{auction.description}</p>
                     )}
                     <p className="mt-1.5 text-[11px] text-muted">
-                      Ends {auction.endsAt.toISOString().slice(0, 16).replace('T', ' ')} UTC
+                      {t.auctions.ends} {auction.endsAt.toISOString().slice(0, 16).replace('T', ' ')} UTC
                       {auction.currentBidderUserId === actor.id && (
-                        <span className="ml-2 text-refined">you are winning</span>
+                        <span className="ml-2 text-refined">{t.auctions.winning}</span>
                       )}
                     </p>
                   </div>
 
                   <div className="text-right">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
-                      {auction.currentBid === null ? 'Starting bid' : 'Current bid'}
+                      {auction.currentBid === null ? t.auctions.startingBid : t.auctions.currentBid}
                     </div>
                     <div className="font-mono text-xl tabular-nums text-ore">
                       {auction.currentBid ?? auction.startingBid}
                     </div>
                     <div className="text-[10px] text-muted">
-                      next: {auction.nextMinimumBid}
+                      {t.auctions.next} {auction.nextMinimumBid}
                     </div>
                   </div>
                 </div>
@@ -94,7 +96,7 @@ export default async function AuctionsPage() {
       </Panel>
 
       {closed.length > 0 && (
-        <Panel title="Settled">
+        <Panel title={t.auctions.settledTitle}>
           <ul className="space-y-2">
             {closed.map((auction) => (
               <li

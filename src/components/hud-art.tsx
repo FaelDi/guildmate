@@ -94,28 +94,25 @@ function hexagon(cx: number, cy: number, r: number): string {
 
 type Nation = 'BELLATO' | 'CORA' | 'ACCRETIA'
 
-const SIGILS: Record<Nation, { color: string; blurb: string; path: string }> = {
+const SIGILS: Record<Nation, { color: string; path: string }> = {
   // A frame around a core: engineers, the nation that builds around a problem.
   BELLATO: {
     color: 'text-bellato',
-    blurb: 'Engineers. Field mechs and a maintenance bill nobody warns you about.',
     path: 'M8 4 L32 4 L36 12 L36 28 L32 36 L8 36 L4 28 L4 12 Z M14 14 L26 14 L26 26 L14 26 Z',
   },
   // An open eye of force: faith, and magic that reaches from a distance.
   CORA: {
     color: 'text-cora',
-    blurb: 'Faith and force. Summons that keep fighting after you look away.',
     path: 'M20 3 L34 20 L20 37 L6 20 Z M20 12 L27 20 L20 28 L13 20 Z',
   },
   // A closed plate: machines, no flesh, no healing.
   ACCRETIA: {
     color: 'text-accretia',
-    blurb: 'Machines. No healers, so every push is a supply decision.',
     path: 'M6 8 L34 8 L34 32 L6 32 Z M12 14 L28 14 M12 20 L28 20 M12 26 L22 26',
   },
 }
 
-export function FactionSigil({ nation }: { nation: Nation }) {
+export function FactionSigil({ nation, blurb }: { nation: Nation; blurb: string }) {
   const sigil = SIGILS[nation]
 
   return (
@@ -137,7 +134,7 @@ export function FactionSigil({ nation }: { nation: Nation }) {
         >
           {nation}
         </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted">{sigil.blurb}</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">{blurb}</p>
       </div>
     </div>
   )

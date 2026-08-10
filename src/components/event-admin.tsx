@@ -9,6 +9,7 @@ import {
   rotateEventCodeAction,
 } from '@/app/actions/events'
 import { FormMessage, SubmitButton } from '@/components/form'
+import { useDictionary } from '@/components/locale-provider'
 import { Field, Input, Select, Textarea } from '@/components/ui'
 
 /**
@@ -17,14 +18,16 @@ import { Field, Input, Select, Textarea } from '@/components/ui'
  * who loses it rotates instead.
  */
 function CodeReveal({ code }: { code: string }) {
+  const t = useDictionary()
+
   return (
     <div className="notch-control border border-refined/40 bg-refined/10 px-4 py-3">
       <p className="text-[10px] uppercase tracking-[0.14em] text-refined">
-        Join code — shown only once
+        {t.admin.codeRevealTitle}
       </p>
       <p className="mt-1 font-mono text-3xl tracking-[0.3em] text-refined">{code}</p>
       <p className="mt-1.5 text-[11px] text-refined/80">
-        Announce it now. It is stored hashed and cannot be recovered.
+        {t.admin.codeRevealHint}
       </p>
     </div>
   )
@@ -32,19 +35,20 @@ function CodeReveal({ code }: { code: string }) {
 
 export function CreateEventForm({ defaultTtl }: { defaultTtl: number }) {
   const [state, formAction] = useActionState(createEventAction, null)
+  const t = useDictionary()
 
   return (
     <form action={formAction} className="space-y-4">
-      <Field label="Event name">
+      <Field label={t.admin.eventName}>
         <Input name="name" required minLength={3} maxLength={120} placeholder="Chip War — Sette" />
       </Field>
 
-      <Field label="Description">
+      <Field label={t.admin.description}>
         <Textarea name="description" maxLength={1000} />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Points">
+        <Field label={t.admin.points}>
           <Input
             name="pointsValue"
             type="number"
@@ -55,7 +59,7 @@ export function CreateEventForm({ defaultTtl }: { defaultTtl: number }) {
           />
         </Field>
 
-        <Field label="Code lifetime (min)" hint="How long the code works.">
+        <Field label={t.admin.codeLifetime} hint={t.admin.codeLifetimeHint}>
           <Input
             name="ttlMinutes"
             type="number"
@@ -66,7 +70,7 @@ export function CreateEventForm({ defaultTtl }: { defaultTtl: number }) {
           />
         </Field>
 
-        <Field label="Min participants" hint="Below this by the deadline, it cancels.">
+        <Field label={t.admin.minParticipants} hint={t.admin.minParticipantsHint}>
           <Input
             name="minParticipants"
             type="number"
@@ -80,7 +84,7 @@ export function CreateEventForm({ defaultTtl }: { defaultTtl: number }) {
       <FormMessage state={state} />
       {state?.ok && <CodeReveal code={state.data.code} />}
 
-      <SubmitButton>Create event and generate code</SubmitButton>
+      <SubmitButton>{t.admin.createEvent}</SubmitButton>
     </form>
   )
 }
@@ -95,6 +99,7 @@ export function EventRowActions({
   canRotate: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const t = useDictionary()
   const [pointsState, pointsAction] = useActionState(changeEventPointsAction, null)
   const [rotateState, rotateAction] = useActionState(rotateEventCodeAction, null)
   const [cancelState, cancelAction] = useActionState(cancelEventAction, null)
@@ -121,7 +126,7 @@ export function EventRowActions({
 
       <form action={pointsAction} className="space-y-2">
         <input type="hidden" name="eventId" value={eventId} />
-        <Field label="New point value" hint="Applies to everyone already registered.">
+        <Field label={t.admin.newPointValue} hint={t.admin.rescoreHint}>
           <Input
             name="newPoints"
             type="number"
@@ -131,8 +136,8 @@ export function EventRowActions({
             className="font-mono tabular-nums"
           />
         </Field>
-        <Input name="reason" placeholder="Reason" required minLength={3} />
-        <SubmitButton className="w-full">Re-score</SubmitButton>
+        <Input name="reason" placeholder={t.common.reason} required minLength={3} />
+        <SubmitButton className="w-full">{t.admin.rescore}</SubmitButton>
         <FormMessage
           state={pointsState}
           success={
@@ -156,7 +161,7 @@ export function EventRowActions({
 
       <form action={cancelAction} className="space-y-2 border-t border-edge pt-3">
         <input type="hidden" name="eventId" value={eventId} />
-        <Input name="reason" placeholder="Cancellation reason" required minLength={3} />
+        <Input name="reason" placeholder={t.admin.cancelReasonPlaceholder} required minLength={3} />
         <label className="flex items-center gap-2 text-[11px] text-muted">
           <input type="checkbox" name="force" className="accent-[#ff5c78]" />
           Force even if confirmed (reverses spent points)
@@ -177,6 +182,7 @@ export function GrantPointsForm({
   events: { id: string; name: string; pointsValue: number }[]
   characters: { id: string; label: string }[]
 }) {
+  const t = useDictionary()
   const [state, formAction] = useActionState(grantPointsAction, null)
 
   if (events.length === 0) {
@@ -190,7 +196,7 @@ export function GrantPointsForm({
   return (
     <form action={formAction} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Event" hint="Points can only be granted against a real event.">
+        <Field label={t.admin.eventsTitle} hint={t.admin.grantEventHint}>
           <Select name="eventId" required>
             {events.map((event) => (
               <option key={event.id} value={event.id}>
@@ -200,7 +206,7 @@ export function GrantPointsForm({
           </Select>
         </Field>
 
-        <Field label="Character" hint="Your own account is not in this list.">
+        <Field label={t.common.character} hint={t.admin.grantMemberHint}>
           <Select name="characterId" required>
             {characters.map((character) => (
               <option key={character.id} value={character.id}>
@@ -211,8 +217,8 @@ export function GrantPointsForm({
         </Field>
       </div>
 
-      <Field label="Reason">
-        <Input name="reason" required minLength={3} placeholder="Attended but the code expired" />
+      <Field label={t.common.reason}>
+        <Input name="reason" required minLength={3} placeholder={t.admin.grantReasonPlaceholder} />
       </Field>
 
       <FormMessage
@@ -228,7 +234,7 @@ export function GrantPointsForm({
         }
       />
 
-      <SubmitButton>Grant points</SubmitButton>
+      <SubmitButton>{t.admin.grantPoints}</SubmitButton>
     </form>
   )
 }

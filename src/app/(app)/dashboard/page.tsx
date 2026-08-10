@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { events, pointLedger } from '@/db/schema'
 import { RedeemCodeForm } from '@/components/redeem-code-form'
 import { Badge, Empty, Panel, Stat, Table } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { requireSession } from '@/lib/session'
 import { listOwnCharacters } from '@/services/accounts'
 import { getBalance } from '@/services/points'
@@ -12,6 +13,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
   const { actor } = await requireSession()
+  const t = await getDictionary()
 
   const [balance, characters, ledger] = await Promise.all([
     getBalance(actor.id),
@@ -37,23 +39,23 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat
-          label="Spendable points"
+          label={t.dashboard.spendable}
           value={balance.available}
           tone="refined"
-          hint="Usable in auctions. Active bids are already deducted."
+          hint={t.dashboard.spendableHint}
         />
         <Stat
-          label="Pending points"
+          label={t.dashboard.pending}
           value={balance.pending}
           tone="ore"
-          hint="Waiting on their event to reach quorum."
+          hint={t.dashboard.pendingHint}
         />
-        <Stat label="Characters" value={characters.length} />
+        <Stat label={t.common.characters} value={characters.length} />
       </div>
 
       <Panel
-        title="Register for a live event"
-        subtitle="Enter the code an admin announced. It only works inside the window they set."
+        title={t.dashboard.redeemTitle}
+        subtitle={t.dashboard.redeemSubtitle}
       >
         <RedeemCodeForm
           characters={characters.map((c) => ({
@@ -66,17 +68,17 @@ export default async function DashboardPage() {
       </Panel>
 
       <Panel
-        title="Your characters"
+        title={t.dashboard.charactersTitle}
         action={
           <Link href="/profile" className="text-xs text-ore hover:underline">
-            Manage roster
+            {t.dashboard.manageRoster}
           </Link>
         }
       >
         {characters.length === 0 ? (
-          <Empty>No characters yet.</Empty>
+          <Empty>{t.dashboard.noCharacters}</Empty>
         ) : (
-          <Table head={['Name', 'Type', 'Race', 'Biosuit', 'Level']}>
+          <Table head={t.dashboard.charactersHead}>
             {characters.map((character) => (
               <tr key={character.id}>
                 <td className="px-3 py-2.5 font-medium text-ink">{character.name}</td>
@@ -94,11 +96,11 @@ export default async function DashboardPage() {
         )}
       </Panel>
 
-      <Panel title="Point ledger" subtitle="Every entry that ever affected your balance.">
+      <Panel title={t.dashboard.ledgerTitle} subtitle={t.dashboard.ledgerSubtitle}>
         {ledger.length === 0 ? (
-          <Empty>No point activity yet.</Empty>
+          <Empty>{t.dashboard.ledgerEmpty}</Empty>
         ) : (
-          <Table head={['When', 'Amount', 'State', 'Reason']}>
+          <Table head={t.dashboard.ledgerHead}>
             {ledger.map((entry) => (
               <tr key={entry.id}>
                 <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-muted">

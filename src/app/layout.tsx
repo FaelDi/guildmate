@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { IBM_Plex_Mono, IBM_Plex_Sans, Oxanium } from 'next/font/google'
+import { LocaleProvider } from '@/components/locale-provider'
+import { dictionaryFor, getLocale } from '@/lib/i18n'
 import './globals.css'
 
 /**
@@ -37,10 +39,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale()
+
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body className="antialiased">{children}</body>
+    <html lang={locale} className={`${display.variable} ${body.variable} ${mono.variable}`}>
+      <body className="antialiased">
+        <LocaleProvider dictionary={dictionaryFor(locale)}>{children}</LocaleProvider>
+      </body>
     </html>
   )
 }

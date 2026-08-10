@@ -1,5 +1,6 @@
 import { ListingForm } from '@/components/listing-form'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { requireSession } from '@/lib/session'
 import { listOwnCharacters } from '@/services/accounts'
 import { listMarket } from '@/services/market'
@@ -8,6 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function MarketPage() {
   const { actor } = await requireSession()
+  const t = await getDictionary()
   const [listings, characters] = await Promise.all([
     listMarket(actor.guildId),
     listOwnCharacters(actor.id),
@@ -16,13 +18,13 @@ export default async function MarketPage() {
   return (
     <div className="space-y-6">
       <Panel
-        title="Guild store"
-        subtitle="Items listed by members, priced in diamonds. The trade itself happens in game."
+        title={t.market.title}
+        subtitle={t.market.subtitle}
       >
         {listings.length === 0 ? (
-          <Empty>Nothing for sale right now.</Empty>
+          <Empty>{t.market.empty}</Empty>
         ) : (
-          <Table head={['Item', 'Rarity', 'Type', 'Lv', 'Qty', 'Price', 'Seller']}>
+          <Table head={t.market.head}>
             {listings.map((listing) => (
               <tr key={listing.id}>
                 <td className="px-3 py-2.5">
@@ -50,7 +52,7 @@ export default async function MarketPage() {
                   {listing.sellerCharacterName}
                   {listing.sellerUserId === actor.id && (
                     <span className="ml-1.5 text-[10px] uppercase tracking-wider text-ore">
-                      you
+                      {t.common.you}
                     </span>
                   )}
                 </td>
@@ -60,7 +62,7 @@ export default async function MarketPage() {
         )}
       </Panel>
 
-      <Panel title="List an item" subtitle="You can only edit or withdraw listings you created.">
+      <Panel title={t.market.listTitle} subtitle={t.market.listSubtitle}>
         <ListingForm
           characters={characters.map((c) => ({
             id: c.id,

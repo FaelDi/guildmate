@@ -4,10 +4,12 @@ import { useActionState } from 'react'
 import Link from 'next/link'
 import { signInAction } from '@/app/actions/auth'
 import { FormMessage, SubmitButton } from '@/components/form'
+import { useDictionary } from '@/components/locale-provider'
 import { Field, Input, Panel } from '@/components/ui'
 
 export default function LoginPage() {
   const [state, formAction] = useActionState(signInAction, null)
+  const t = useDictionary()
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-16">
@@ -15,26 +17,26 @@ export default function LoginPage() {
         GuildMate
       </Link>
 
-      <Panel title="Sign in">
+      <Panel title={t.auth.signInTitle}>
         <form action={formAction} className="space-y-4">
-          <Field label="Email">
+          <Field label={t.common.email}>
             <Input name="email" type="email" required autoComplete="email" />
           </Field>
 
-          <Field label="Password">
+          <Field label={t.common.password}>
             <Input name="password" type="password" required autoComplete="current-password" />
           </Field>
 
           <FormMessage state={state} />
 
-          <SubmitButton className="w-full">Sign in</SubmitButton>
+          <SubmitButton className="w-full">{t.common.signIn}</SubmitButton>
         </form>
       </Panel>
 
       <p className="mt-5 text-center text-xs text-muted">
-        No account yet?{' '}
+        {t.auth.noAccount}{' '}
         <Link href="/register" className="text-ore hover:underline">
-          Join a guild
+          {t.landing.joinGuild}
         </Link>
       </p>
     </main>

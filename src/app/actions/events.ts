@@ -58,7 +58,7 @@ export async function createEventAction(
         name: String(formData.get('name') ?? ''),
         description: String(formData.get('description') ?? '') || null,
         pointsValue: Number(formData.get('pointsValue') ?? 0),
-        ttlMinutes: Number(formData.get('ttlMinutes') ?? 30),
+        ttlMinutes: Number(formData.get('ttlMinutes')) || 60,
         minParticipants: formData.get('minParticipants')
           ? Number(formData.get('minParticipants'))
           : undefined,

@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { characters, users } from '@/db/schema'
 import { CreateEventForm, EventRowActions, GrantPointsForm } from '@/components/event-admin'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { getSettings, requireAdmin } from '@/lib/session'
 import { listGuildEvents, listRegistrationLog } from '@/services/events'
 
@@ -10,6 +11,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminEventsPage() {
   const { actor, now } = await requireAdmin()
+  const t = await getDictionary()
   const settings = await getSettings(actor.guildId)
 
   const [events, registrations, grantableCharacters] = await Promise.all([
@@ -43,18 +45,18 @@ export default async function AdminEventsPage() {
   return (
     <div className="space-y-6">
       <Panel
-        title="Create an event"
-        subtitle="The code is generated here and shown once. It expires after the lifetime you choose."
+        title={t.admin.createEventTitle}
+        subtitle={t.admin.createEventSubtitle}
       >
         <CreateEventForm defaultTtl={settings.defaultCodeTtlMinutes} />
       </Panel>
 
-      <Panel title="Events">
+      <Panel title={t.admin.eventsTitle}>
         {events.length === 0 ? (
-          <Empty>No events yet.</Empty>
+          <Empty>{t.admin.eventsEmpty}</Empty>
         ) : (
           <Table
-            head={['Event', 'Points', 'Status', 'Regs', 'Code', 'Closes', 'Deadline', 'Manage']}
+            head={t.admin.eventsHead}
           >
             {events.map((event) => (
               <tr key={event.id}>
@@ -89,8 +91,8 @@ export default async function AdminEventsPage() {
       </Panel>
 
       <Panel
-        title="Score a member manually"
-        subtitle="Requires an existing event. You cannot award points to your own account or its alts."
+        title={t.admin.grantTitle}
+        subtitle={t.admin.grantSubtitle}
       >
         <GrantPointsForm
           events={scorableEvents.map((e) => ({
@@ -106,14 +108,14 @@ export default async function AdminEventsPage() {
       </Panel>
 
       <Panel
-        title="Registration log"
-        subtitle="Who claimed what, when, and at which level. Repeated IP fingerprints are worth a look."
+        title={t.admin.logTitle}
+        subtitle={t.admin.logSubtitle}
       >
         {registrations.length === 0 ? (
-          <Empty>No registrations yet.</Empty>
+          <Empty>{t.admin.logEmpty}</Empty>
         ) : (
           <Table
-            head={['When', 'Event', 'Character', 'Type', 'Lv', 'Member', 'Source', 'State', 'IP']}
+            head={t.admin.logHead}
           >
             {registrations.map((registration) => (
               <tr key={registration.id}>

@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import { registerAction } from '@/app/actions/auth'
 import { CharacterFields } from '@/components/character-fields'
 import { FormMessage, SubmitButton } from '@/components/form'
+import { useDictionary } from '@/components/locale-provider'
 import { Field, Input, Select } from '@/components/ui'
 
 export type JoinableGuild = { slug: string; name: string; tag: string | null }
@@ -18,19 +19,19 @@ export type JoinableGuild = { slug: string; name: string; tag: string | null }
  */
 export function JoinGuildForm({ guilds }: { guilds: JoinableGuild[] }) {
   const [state, formAction] = useActionState(registerAction, null)
+  const t = useDictionary()
 
   if (guilds.length === 0) {
     return (
       <p className="text-sm leading-relaxed text-muted">
-        No guild is accepting members yet. A guild is created from an invite link — ask
-        whoever runs your server for one.
+        {t.auth.noGuildsYet}
       </p>
     )
   }
 
   return (
     <form action={formAction} className="space-y-4">
-      <Field label="Guild">
+      <Field label={t.common.guild}>
         <Select name="guildSlug" required defaultValue={guilds[0]?.slug}>
           {guilds.map((guild) => (
             <option key={guild.slug} value={guild.slug}>
@@ -41,11 +42,11 @@ export function JoinGuildForm({ guilds }: { guilds: JoinableGuild[] }) {
         </Select>
       </Field>
 
-      <Field label="Email">
+      <Field label={t.common.email}>
         <Input name="email" type="email" required autoComplete="email" />
       </Field>
 
-      <Field label="Password" hint="At least 10 characters.">
+      <Field label={t.common.password} hint={t.auth.passwordHint}>
         <Input name="password" type="password" required minLength={10} autoComplete="new-password" />
       </Field>
 
@@ -55,7 +56,7 @@ export function JoinGuildForm({ guilds }: { guilds: JoinableGuild[] }) {
 
       <FormMessage state={state} />
 
-      <SubmitButton className="w-full">Create account</SubmitButton>
+      <SubmitButton className="w-full">{t.auth.createAccount}</SubmitButton>
     </form>
   )
 }

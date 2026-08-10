@@ -1,4 +1,5 @@
 import { RF_NEXT_BIOSUITS } from '@/lib/biosuits'
+import { useDictionary } from './locale-provider'
 import { Field, Input, Select } from './ui'
 
 /**
@@ -13,14 +14,16 @@ import { Field, Input, Select } from './ui'
  * always mints a MAIN, and an account that already has one can only add ALTs.
  */
 export function CharacterFields({ lockKind }: { lockKind?: 'MAIN' | 'ALT' }) {
+  const t = useDictionary()
+
   return (
     <>
-      <Field label="Character name">
+      <Field label={t.characterFields.name}>
         <Input name="characterName" required minLength={2} maxLength={40} />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Race">
+        <Field label={t.characterFields.race}>
           <Select name="race" defaultValue="BELLATO">
             <option value="BELLATO">Bellato</option>
             <option value="CORA">Cora</option>
@@ -28,7 +31,7 @@ export function CharacterFields({ lockKind }: { lockKind?: 'MAIN' | 'ALT' }) {
           </Select>
         </Field>
 
-        <Field label="Biosuit">
+        <Field label={t.characterFields.biosuit}>
           {/* Suggestions, not a whitelist: the roster is game content, and a
               private server may run suits Netmarble never shipped. */}
           <Input name="biosuit" required maxLength={60} list="biosuit-roster" placeholder="Technician" />
@@ -41,17 +44,17 @@ export function CharacterFields({ lockKind }: { lockKind?: 'MAIN' | 'ALT' }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Current level">
+        <Field label={t.characterFields.level}>
           <Input name="level" type="number" min={1} max={999} defaultValue={1} required />
         </Field>
 
         {lockKind ? (
           <input type="hidden" name="kind" value={lockKind} />
         ) : (
-          <Field label="Character type" hint="Only a main character can spend points in auctions.">
+          <Field label={t.characterFields.kind} hint={t.characterFields.kindHint}>
             <Select name="kind" defaultValue="MAIN">
-              <option value="MAIN">Main</option>
-              <option value="ALT">Alt</option>
+              <option value="MAIN">{t.characterFields.main}</option>
+              <option value="ALT">{t.characterFields.alt}</option>
             </Select>
           </Field>
         )}

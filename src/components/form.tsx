@@ -2,6 +2,7 @@
 
 import { useFormStatus } from 'react-dom'
 import type { ReactNode } from 'react'
+import { useDictionary, useErrorMessage } from '@/components/locale-provider'
 import type { ActionResult } from '@/lib/errors'
 
 export function SubmitButton({
@@ -14,6 +15,7 @@ export function SubmitButton({
   className?: string
 }) {
   const { pending } = useFormStatus()
+  const dictionary = useDictionary()
 
   const variants = {
     primary: 'border-ore/55 bg-ore/12 text-ore hover:bg-ore/22',
@@ -27,7 +29,7 @@ export function SubmitButton({
       disabled={pending}
       className={`notch-control inline-flex items-center justify-center border px-4 py-2 font-display text-xs font-semibold uppercase tracking-[0.16em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants} ${className}`}
     >
-      {pending ? 'Working' : children}
+      {pending ? dictionary.common.working : children}
     </button>
   )
 }
@@ -43,6 +45,8 @@ export function FormMessage({
   state: ActionResult<unknown> | null
   success?: ReactNode
 }) {
+  const translate = useErrorMessage()
+
   if (!state) return null
 
   if (!state.ok) {
@@ -51,7 +55,9 @@ export function FormMessage({
         role="alert"
         className="notch-control border border-slag/45 bg-slag/10 px-3 py-2 text-xs leading-relaxed text-slag"
       >
-        {state.message}
+        {/* Denials travel as a stable code; the English text the domain layer
+            produced is the fallback for anything not translated yet. */}
+        {translate(state.code, state.message)}
       </p>
     )
   }

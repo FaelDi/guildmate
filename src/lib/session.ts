@@ -95,7 +95,7 @@ export async function getSettings(guildId: string): Promise<SettingsLike> {
   return {
     minParticipants: row?.minParticipants ?? 3,
     confirmationWindowHours: row?.confirmationWindowHours ?? 48,
-    defaultCodeTtlMinutes: row?.defaultCodeTtlMinutes ?? 30,
+    defaultCodeTtlMinutes: row?.defaultCodeTtlMinutes ?? 60,
     maxCodeTtlMinutes: row?.maxCodeTtlMinutes ?? 720,
     maxRegistrationsPerDay: row?.maxRegistrationsPerDay ?? 12,
     minLevelToRegister: row?.minLevelToRegister ?? 1,

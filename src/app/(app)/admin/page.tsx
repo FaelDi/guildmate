@@ -1,5 +1,6 @@
 import { MemberActions } from '@/components/member-actions'
 import { Badge, Empty, Panel, Stat, Table } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { requireAdmin } from '@/lib/session'
 import { listActiveRestrictions, listMembers } from '@/services/moderation'
 
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminMembersPage() {
   const { actor } = await requireAdmin()
+  const t = await getDictionary()
   const [members, restrictions] = await Promise.all([
     listMembers(actor),
     listActiveRestrictions(actor),
@@ -18,21 +20,21 @@ export default async function AdminMembersPage() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Members" value={members.length} />
-        <Stat label="Active" value={active} tone="refined" />
-        <Stat label="Restricted" value={banned} tone="ore" />
-        <Stat label="Live restrictions" value={restrictions.length} />
+        <Stat label={t.admin.membersStat} value={members.length} />
+        <Stat label={t.admin.activeStat} value={active} tone="refined" />
+        <Stat label={t.admin.restrictedStat} value={banned} tone="ore" />
+        <Stat label={t.admin.liveRestrictionsStat} value={restrictions.length} />
       </div>
 
       <Panel
-        title="Roster"
-        subtitle="Levels, points and registration counts. You can only moderate members below your own rank."
+        title={t.admin.rosterTitle}
+        subtitle={t.admin.rosterSubtitle}
       >
         {members.length === 0 ? (
-          <Empty>No members yet.</Empty>
+          <Empty>{t.admin.rosterEmpty}</Empty>
         ) : (
           <Table
-            head={['Member', 'Main character', 'Lv', 'Role', 'Status', 'Events', 'Points', 'Manage']}
+            head={t.admin.rosterHead}
           >
             {members.map((member) => (
               <tr key={member.id}>
@@ -77,11 +79,11 @@ export default async function AdminMembersPage() {
         )}
       </Panel>
 
-      <Panel title="Active restrictions">
+      <Panel title={t.admin.restrictionsTitle}>
         {restrictions.length === 0 ? (
-          <Empty>No restrictions in force.</Empty>
+          <Empty>{t.admin.restrictionsEmpty}</Empty>
         ) : (
-          <Table head={['Member', 'Type', 'Reason', 'Since', 'Until']}>
+          <Table head={t.admin.restrictionsHead}>
             {restrictions.map((restriction) => (
               <tr key={restriction.id}>
                 <td className="px-3 py-2.5 text-ink">{restriction.email}</td>

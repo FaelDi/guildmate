@@ -3,21 +3,23 @@
 import { useActionState } from 'react'
 import { redeemCodeAction } from '@/app/actions/events'
 import { FormMessage, SubmitButton } from '@/components/form'
+import { useDictionary } from '@/components/locale-provider'
 import { Field, Input, Select } from '@/components/ui'
 
 export type CharacterOption = { id: string; name: string; kind: string; level: number }
 
 export function RedeemCodeForm({ characters }: { characters: CharacterOption[] }) {
   const [state, formAction] = useActionState(redeemCodeAction, null)
+  const t = useDictionary()
 
   if (characters.length === 0) {
-    return <p className="text-sm text-muted">Create a character before registering for events.</p>
+    return <p className="text-sm text-muted">{t.redeem.needCharacter}</p>
   }
 
   return (
     <form action={formAction} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Character">
+        <Field label={t.common.character}>
           <Select name="characterId" required>
             {characters.map((character) => (
               <option key={character.id} value={character.id}>
@@ -27,7 +29,7 @@ export function RedeemCodeForm({ characters }: { characters: CharacterOption[] }
           </Select>
         </Field>
 
-        <Field label="Event code" hint="Case does not matter; dashes are ignored.">
+        <Field label={t.redeem.code} hint={t.redeem.codeHint}>
           <Input
             name="code"
             required
@@ -45,15 +47,15 @@ export function RedeemCodeForm({ characters }: { characters: CharacterOption[] }
           state?.ok ? (
             <>
               <strong className="font-semibold">
-                +{state.data.pointsAwarded} points
+                +{state.data.pointsAwarded} {t.redeem.awarded}
               </strong>{' '}
-              for {state.data.eventName}.{' '}
+              {t.redeem.for} {state.data.eventName}.{' '}
               {state.data.confirmed ? (
-                <>The event is confirmed, so these points are spendable now.</>
+                <>{t.redeem.confirmed}</>
               ) : (
                 <>
-                  Pending: {state.data.registrationsSoFar}/{state.data.minParticipants}{' '}
-                  registrations. Points become spendable once the event reaches quorum.
+                  {t.redeem.pendingPrefix} {state.data.registrationsSoFar}/
+                  {state.data.minParticipants} {t.redeem.pendingSuffix}
                 </>
               )}
             </>
@@ -61,7 +63,7 @@ export function RedeemCodeForm({ characters }: { characters: CharacterOption[] }
         }
       />
 
-      <SubmitButton>Register</SubmitButton>
+      <SubmitButton>{t.redeem.submit}</SubmitButton>
     </form>
   )
 }

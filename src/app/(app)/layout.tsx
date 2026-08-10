@@ -4,23 +4,27 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { guilds } from '@/db/schema'
 import { signOutAction } from '@/app/actions/auth'
-import { NavLinks, type NavItem } from '@/components/nav-links'
+import { NavLinks } from '@/components/nav-links'
 import { Badge } from '@/components/ui'
+import { LocaleSwitch } from '@/components/locale-switch'
+import { getDictionary } from '@/lib/i18n'
 import { isGuildAdmin } from '@/lib/rules'
 import { getSessionContext } from '@/lib/session'
 
 type Visibility = 'everyone' | 'admin' | 'superAdmin'
 
-const NAV: (NavItem & { visibleTo: Visibility })[] = [
-  { href: '/dashboard', label: 'Dashboard', visibleTo: 'everyone' },
-  { href: '/profile', label: 'Characters', visibleTo: 'everyone' },
-  { href: '/events', label: 'Events', visibleTo: 'everyone' },
-  { href: '/auctions', label: 'Auctions', visibleTo: 'everyone' },
-  { href: '/market', label: 'Store', visibleTo: 'everyone' },
-  { href: '/admin', label: 'Members', visibleTo: 'admin' },
-  { href: '/admin/events', label: 'Event admin', visibleTo: 'admin' },
-  { href: '/admin/log', label: 'Audit', visibleTo: 'admin' },
-  { href: '/admin/invites', label: 'Invites', visibleTo: 'superAdmin' },
+type NavKey = keyof Awaited<ReturnType<typeof getDictionary>>['nav']
+
+const NAV: { href: string; key: NavKey; visibleTo: Visibility }[] = [
+  { href: '/dashboard', key: 'dashboard', visibleTo: 'everyone' },
+  { href: '/profile', key: 'profile', visibleTo: 'everyone' },
+  { href: '/events', key: 'events', visibleTo: 'everyone' },
+  { href: '/auctions', key: 'auctions', visibleTo: 'everyone' },
+  { href: '/market', key: 'market', visibleTo: 'everyone' },
+  { href: '/admin', key: 'members', visibleTo: 'admin' },
+  { href: '/admin/events', key: 'eventAdmin', visibleTo: 'admin' },
+  { href: '/admin/log', key: 'audit', visibleTo: 'admin' },
+  { href: '/admin/invites', key: 'invites', visibleTo: 'superAdmin' },
 ]
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -33,6 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { actor, user } = session
   const admin = isGuildAdmin(actor.role)
   const [guild] = await db.select().from(guilds).where(eq(guilds.id, actor.guildId)).limit(1)
+  const t = await getDictionary()
 
   return (
     <div className="min-h-dvh">
@@ -53,10 +58,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               if (item.visibleTo === 'superAdmin') return actor.role === 'SUPER_ADMIN'
               if (item.visibleTo === 'admin') return admin
               return true
-            })}
+            }).map((item) => ({ href: item.href, label: t.nav[item.key] }))}
           />
 
           <div className="ml-auto flex items-center gap-3">
+            <LocaleSwitch />
             <Badge value={actor.role} />
             <span className="hidden font-mono text-[11px] text-muted sm:inline">{user.email}</span>
             <form action={signOutAction}>
@@ -64,7 +70,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 type="submit"
                 className="notch-control border border-edge px-2.5 py-1 font-display text-[10px] font-semibold uppercase tracking-[0.14em] text-muted transition-colors hover:border-slag/50 hover:text-slag"
               >
-                Sign out
+                {t.common.signOut}
               </button>
             </form>
           </div>

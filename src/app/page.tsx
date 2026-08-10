@@ -1,43 +1,28 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { FactionSigil, OreCore } from '@/components/hud-art'
+import { LocaleSwitch } from '@/components/locale-switch'
 import { Eyebrow } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { getSessionContext } from '@/lib/session'
-
-/** The three states every point passes through - the whole thesis of the app. */
-const LIFECYCLE = [
-  {
-    state: 'RAW',
-    mark: 'bg-ore',
-    text: 'text-ore',
-    line: 'Redeeming the code books the points at once. They are not spendable yet.',
-  },
-  {
-    state: 'REFINED',
-    mark: 'bg-refined',
-    text: 'text-refined',
-    line: 'The event reaches its minimum turnout and those same points become spendable.',
-  },
-  {
-    state: 'SLAG',
-    mark: 'bg-slag',
-    text: 'text-slag',
-    line: 'Turnout misses the deadline. The event is cancelled and every point is reversed.',
-  },
-]
-
-/**
- * Creating a guild is not offered here on purpose: it needs an invite link,
- * and a button that leads to "you cannot do this" is worse than no button.
- */
-const ACTIONS = [
-  { href: '/login', label: 'Sign in', primary: true },
-  { href: '/register', label: 'Join a guild', primary: false },
-]
 
 export default async function HomePage() {
   const session = await getSessionContext()
   if (session) redirect('/dashboard')
+
+  const t = await getDictionary()
+
+  /** The three states every point passes through - the thesis of the app. */
+  const lifecycle = [
+    { ...t.landing.lifecycle.raw, mark: 'bg-ore', text: 'text-ore' },
+    { ...t.landing.lifecycle.refined, mark: 'bg-refined', text: 'text-refined' },
+    { ...t.landing.lifecycle.slag, mark: 'bg-slag', text: 'text-slag' },
+  ]
+
+  const actions = [
+    { href: '/login', label: t.common.signIn, primary: true },
+    { href: '/register', label: t.landing.joinGuild, primary: false },
+  ]
 
   return (
     <main className="relative mx-auto grid min-h-dvh max-w-6xl grid-cols-1 items-center gap-12 px-6 py-16 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
@@ -46,25 +31,24 @@ export default async function HomePage() {
       <OreCore className="pointer-events-none absolute -right-40 top-1/2 hidden h-[820px] w-[820px] -translate-y-1/2 opacity-70 lg:block" />
       <OreCore className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] opacity-40 lg:hidden" />
 
+      <LocaleSwitch className="absolute right-6 top-6 z-10" />
+
       <div className="relative">
-        <Eyebrow>GuildMate — operations terminal</Eyebrow>
+        <Eyebrow>{t.landing.eyebrow}</Eyebrow>
 
         <h1 className="mt-5 font-display text-6xl font-bold uppercase leading-[0.9] tracking-tight text-ink sm:text-7xl">
-          Points are
+          {t.landing.headline[0]}
           <br />
-          <span className="text-ore">mined</span>, not
+          <span className="text-ore">{t.landing.headline[1]}</span>
+          {t.landing.headline[2]}
           <br />
-          minted.
+          {t.landing.headline[3]}
         </h1>
 
-        <p className="mt-7 max-w-md text-sm leading-relaxed text-muted">
-          Run your guild&apos;s events, auctions and store on a ledger nobody can quietly edit.
-          An admin announces a code that dies on schedule, players redeem it, and the points
-          only turn spendable once enough people actually showed up.
-        </p>
+        <p className="mt-7 max-w-md text-sm leading-relaxed text-muted">{t.landing.lede}</p>
 
         <div className="mt-10 flex flex-wrap gap-3">
-          {ACTIONS.map((action) => (
+          {actions.map((action) => (
             <Link
               key={action.href}
               href={action.href}
@@ -81,7 +65,7 @@ export default async function HomePage() {
       </div>
 
       <section
-        aria-label="The life of one point"
+        aria-label={t.landing.lifecycleTitle}
         className="notch-panel tick relative overflow-hidden border border-edge bg-panel/80 backdrop-blur-sm"
       >
         {/* The only thing on the site that moves by itself: a survey sweep. */}
@@ -92,16 +76,16 @@ export default async function HomePage() {
 
         <header className="border-b border-edge px-5 py-3.5">
           <h2 className="font-display text-[13px] font-semibold uppercase tracking-[0.18em] text-ink">
-            The life of one point
+            {t.landing.lifecycleTitle}
           </h2>
         </header>
 
         <ol className="divide-y divide-edge/60">
-          {LIFECYCLE.map((phase, index) => (
+          {lifecycle.map((phase, index) => (
             <li key={phase.state} className="flex gap-4 px-5 py-5">
               <div className="flex flex-col items-center gap-2 pt-1.5">
                 <span aria-hidden className={`h-2.5 w-2.5 ${phase.mark}`} />
-                {index < LIFECYCLE.length - 1 && (
+                {index < lifecycle.length - 1 && (
                   <span aria-hidden className="w-px flex-1 bg-edge" />
                 )}
               </div>
@@ -116,17 +100,13 @@ export default async function HomePage() {
         </ol>
 
         <footer className="border-t border-edge px-5 py-3.5 text-[11px] leading-relaxed text-muted">
-          Corrections are new rows, never edits. An alt&apos;s points roll up to its main, and
-          only a main can bid at auction.
+          {t.landing.lifecycleFooter}
         </footer>
       </section>
 
-      <section
-        aria-label="The three nations"
-        className="relative grid gap-6 border-t border-edge pt-8 sm:grid-cols-3 lg:col-span-2"
-      >
+      <section className="relative grid gap-6 border-t border-edge pt-8 sm:grid-cols-3 lg:col-span-2">
         {(['BELLATO', 'CORA', 'ACCRETIA'] as const).map((nation) => (
-          <FactionSigil key={nation} nation={nation} />
+          <FactionSigil key={nation} nation={nation} blurb={t.landing.nations[nation]} />
         ))}
       </section>
     </main>

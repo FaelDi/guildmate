@@ -3,6 +3,7 @@
 import { useActionState } from 'react'
 import { placeBidAction } from '@/app/actions/auctions'
 import { FormMessage, SubmitButton } from '@/components/form'
+import { useDictionary } from '@/components/locale-provider'
 import { Input, Select } from '@/components/ui'
 import type { CharacterOption } from './redeem-code-form'
 
@@ -20,11 +21,12 @@ export function BidForm({
   mainCharacters: CharacterOption[]
 }) {
   const [state, formAction] = useActionState(placeBidAction, null)
+  const t = useDictionary()
 
   if (mainCharacters.length === 0) {
     return (
       <p className="text-xs text-muted">
-        Only a main character can bid. Set one on your profile first.
+        {t.auctions.needMain}
       </p>
     )
   }
@@ -48,11 +50,11 @@ export function BidForm({
           required
           className="w-32 font-mono tabular-nums"
         />
-        <SubmitButton>Bid</SubmitButton>
+        <SubmitButton>{t.auctions.bid}</SubmitButton>
       </div>
       <FormMessage
         state={state}
-        success={state?.ok ? `Bid of ${state.data.amount} points placed.` : null}
+        success={state?.ok ? `${state.data.amount} ${t.common.points}` : null}
       />
     </form>
   )

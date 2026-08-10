@@ -2,12 +2,14 @@ import { desc, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { auditLog, users } from '@/db/schema'
 import { Empty, Panel, Table } from '@/components/ui'
+import { getDictionary } from '@/lib/i18n'
 import { requireAdmin } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AuditLogPage() {
   const { actor } = await requireAdmin()
+  const t = await getDictionary()
 
   const entries = await db
     .select({
@@ -27,13 +29,13 @@ export default async function AuditLogPage() {
 
   return (
     <Panel
-      title="Audit trail"
-      subtitle="Append-only. Secrets and event codes are redacted before anything is written here."
+      title={t.admin.auditTitle}
+      subtitle={t.admin.auditSubtitle}
     >
       {entries.length === 0 ? (
-        <Empty>Nothing recorded yet.</Empty>
+        <Empty>{t.admin.auditEmpty}</Empty>
       ) : (
-        <Table head={['When', 'Actor', 'Action', 'Entity', 'Detail']}>
+        <Table head={t.admin.auditHead}>
           {entries.map((entry) => (
             <tr key={entry.id}>
               <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-muted">

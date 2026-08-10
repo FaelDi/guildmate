@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { IssueInviteForm, RevokeInviteButton } from '@/components/invite-admin'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { describeInviteStatus, INVITE_TTL_HOURS } from '@/lib/rules'
+import { getDictionary } from '@/lib/i18n'
 import { requireSession } from '@/lib/session'
 import { listInvites } from '@/services/invites'
 
@@ -18,24 +19,25 @@ export default async function InvitesPage() {
   if (actor.role !== 'SUPER_ADMIN') notFound()
 
   const invites = await listInvites(actor)
+  const t = await getDictionary()
   const headerList = await headers()
   const origin = `https://${headerList.get('host') ?? 'localhost:3000'}`
 
   return (
     <div className="space-y-6">
       <Panel
-        title="Issue a guild invite"
-        subtitle={`A single-use link, good for ${INVITE_TTL_HOURS} hours. It is the only way a guild is created.`}
+        title={t.invite.adminIssueTitle}
+        subtitle={t.invite.adminIssueSubtitle}
         tone="ore"
       >
         <IssueInviteForm origin={origin} />
       </Panel>
 
-      <Panel title="Invites" subtitle="The receipt for every guild on this server.">
+      <Panel title={t.invite.listTitle} subtitle={t.invite.listSubtitle}>
         {invites.length === 0 ? (
-          <Empty>No invite has been issued yet.</Empty>
+          <Empty>{t.invite.listEmpty}</Empty>
         ) : (
-          <Table head={['Token', 'For', 'Status', 'Expires', 'Redeemed by', 'Guild', '']}>
+          <Table head={t.invite.listHead}>
             {invites.map((invite) => {
               const status = describeInviteStatus(invite, now)
               return (

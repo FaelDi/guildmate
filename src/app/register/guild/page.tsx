@@ -1,18 +1,10 @@
 import Link from 'next/link'
 import { CreateGuildForm } from '@/components/create-guild-form'
 import { Empty, Panel } from '@/components/ui'
-import { INVITE_TTL_HOURS } from '@/lib/rules'
+import { getDictionary } from '@/lib/i18n'
 import { peekInvite } from '@/services/invites'
 
 export const dynamic = 'force-dynamic'
-
-/** What the visitor is told before they fill anything in. */
-const REFUSALS: Record<string, string> = {
-  UNKNOWN: 'This invite link is not valid. Ask whoever runs the server for a new one.',
-  EXPIRED: `This invite has expired. They last ${INVITE_TTL_HOURS} hours — ask for a fresh link.`,
-  REDEEMED: 'This invite has already been used. Each one creates exactly one guild.',
-  REVOKED: 'This invite was revoked.',
-}
 
 export default async function CreateGuildPage({
   searchParams,
@@ -21,6 +13,8 @@ export default async function CreateGuildPage({
 }) {
   const token = (await searchParams).token?.trim() ?? ''
   const status = token ? await peekInvite(token, new Date()) : 'UNKNOWN'
+  const t = await getDictionary()
+  const refusals: Record<string, string> = t.invite.refusals
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6 py-16">
@@ -30,19 +24,19 @@ export default async function CreateGuildPage({
 
       {status === 'LIVE' ? (
         <Panel
-          title="Create a guild"
-          subtitle="You become the leader. This invite is spent the moment the guild exists."
+          title={t.invite.createTitle}
+          subtitle={t.invite.createSubtitle}
           tone="ore"
         >
           <CreateGuildForm token={token} />
         </Panel>
       ) : (
-        <Panel title="Invite required" tone="slag">
-          <Empty>{REFUSALS[status] ?? REFUSALS.UNKNOWN}</Empty>
+        <Panel title={t.invite.requiredTitle} tone="slag">
+          <Empty>{refusals[status] ?? refusals.UNKNOWN}</Empty>
           <p className="mt-4 text-center text-xs text-muted">
-            Already have an account?{' '}
+            {t.auth.alreadyMember}{' '}
             <Link href="/login" className="text-ore hover:underline">
-              Sign in
+              {t.common.signIn}
             </Link>
           </p>
         </Panel>
