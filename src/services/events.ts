@@ -788,6 +788,54 @@ export async function sweepEvents(now: Date): Promise<SweepReport> {
 // Read models
 // ---------------------------------------------------------------------------
 
+/**
+ * The event a member could still register for right now, if there is one.
+ *
+ * Feeds the floating widget, so it runs on every authenticated page: one
+ * indexed read on `events_guild_status_idx`, and it never selects the code or
+ * its digest - the widget's whole job is to say a code exists somewhere else.
+ *
+ * An account that already registered gets nothing back: the point is to catch
+ * people who have not, not to nag the ones who did.
+ */
+export async function getLiveEventForMember(params: { actor: Actor; now: Date }) {
+  const { actor, now } = params
+
+  const [event] = await db
+    .select({
+      id: events.id,
+      name: events.name,
+      pointsValue: events.pointsValue,
+      registrationClosesAt: events.registrationClosesAt,
+      minParticipants: events.minParticipants,
+      registrationCount: sql<number>`(
+        select count(*)::int from ${eventRegistrations}
+        where ${eventRegistrations.eventId} = ${events.id}
+          and ${eventRegistrations.status} <> 'REVERSED'
+      )`,
+      alreadyRegistered: sql<boolean>`exists (
+        select 1 from ${eventRegistrations}
+        where ${eventRegistrations.eventId} = ${events.id}
+          and ${eventRegistrations.userId} = ${actor.id}
+          and ${eventRegistrations.status} <> 'REVERSED'
+      )`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.guildId, actor.guildId),
+        eq(events.status, 'OPEN'),
+        gt(events.registrationClosesAt, now),
+      ),
+    )
+    // The one closing soonest: that is the one worth interrupting somebody for.
+    .orderBy(events.registrationClosesAt)
+    .limit(1)
+
+  if (!event || event.alreadyRegistered) return null
+  return event
+}
+
 export async function listGuildEvents(guildId: string, limit = 100) {
   return db
     .select({

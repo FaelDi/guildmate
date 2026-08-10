@@ -138,6 +138,18 @@ export const enUS: Dictionary = {
     ledgerHead: ['When', 'Amount', 'State', 'Reason'],
   },
 
+  liveEvent: {
+    title: 'Event running',
+    closesIn: 'Closes in',
+    closed: 'Window closed',
+    worth: 'Worth',
+    quorumNote: 'registrations so far.',
+    codePlaceholder: 'CODE',
+    redeem: 'Redeem',
+    reopen: 'Event running',
+    minimize: 'Minimise',
+  },
+
   redeem: {
     needCharacter: 'Create a character before registering for events.',
     code: 'Event code',

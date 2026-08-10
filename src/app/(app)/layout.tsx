@@ -6,10 +6,13 @@ import { guilds } from '@/db/schema'
 import { signOutAction } from '@/app/actions/auth'
 import { NavLinks } from '@/components/nav-links'
 import { Badge } from '@/components/ui'
+import { LiveEventWidget } from '@/components/live-event-widget'
 import { LocaleSwitch } from '@/components/locale-switch'
 import { getDictionary } from '@/lib/i18n'
 import { isGuildAdmin } from '@/lib/rules'
 import { getSessionContext } from '@/lib/session'
+import { listOwnCharacters } from '@/services/accounts'
+import { getLiveEventForMember } from '@/services/events'
 
 type Visibility = 'everyone' | 'admin' | 'superAdmin'
 
@@ -35,10 +38,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const session = await getSessionContext()
   if (!session) redirect('/login')
 
-  const { actor, user } = session
+  const { actor, user, now } = session
   const admin = isGuildAdmin(actor.role)
   const [guild] = await db.select().from(guilds).where(eq(guilds.id, actor.guildId)).limit(1)
-  const t = await getDictionary()
+  const [t, liveEvent, characters] = await Promise.all([
+    getDictionary(),
+    getLiveEventForMember({ actor, now }),
+    listOwnCharacters(actor.id),
+  ])
 
   return (
     <div className="min-h-dvh">
@@ -80,6 +87,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+
+      {/* Follows the member around: the join window has a deadline and the
+          dashboard does not. Absent entirely when there is nothing to catch. */}
+      {liveEvent && (
+        <LiveEventWidget
+          event={{
+            id: liveEvent.id,
+            name: liveEvent.name,
+            pointsValue: liveEvent.pointsValue,
+            closesAt: liveEvent.registrationClosesAt.toISOString(),
+            registrationCount: liveEvent.registrationCount,
+            minParticipants: liveEvent.minParticipants,
+          }}
+          characters={characters.map((c) => ({
+            id: c.id,
+            name: c.name,
+            kind: c.kind,
+            level: c.level,
+          }))}
+        />
+      )}
     </div>
   )
 }

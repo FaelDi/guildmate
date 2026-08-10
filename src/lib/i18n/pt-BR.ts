@@ -140,6 +140,18 @@ export const ptBR = {
     ledgerHead: ['Quando', 'Valor', 'Estado', 'Motivo'],
   },
 
+  liveEvent: {
+    title: 'Evento rodando',
+    closesIn: 'Fecha em',
+    closed: 'Janela fechada',
+    worth: 'Vale',
+    quorumNote: 'registros até agora.',
+    codePlaceholder: 'CÓDIGO',
+    redeem: 'Resgatar',
+    reopen: 'Evento ativo',
+    minimize: 'Minimizar',
+  },
+
   redeem: {
     needCharacter: 'Crie um personagem antes de registrar presença.',
     code: 'Código do evento',
