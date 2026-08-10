@@ -57,6 +57,15 @@ npm run db:generate     # only after editing src/db/schema.ts
 npm run db:migrate      # applies drizzle/*.sql using DIRECT_URL
 ```
 
+drizzle-kit runs outside Next, so `drizzle.config.ts` loads `.env.local` itself (through
+`@next/env`, the same loader the app uses, so a migration can never target a different
+database than the running app). `DIRECT_URL` must be the **direct** connection: DDL does not
+work over the transaction pooler.
+
+Note that `SUPABASE_URL` is the HTTPS API endpoint for Auth and Storage — it is **not** a
+database connection. The Postgres URLs come from **Connect → ORMs** in the dashboard and
+authenticate with the database password, not with an API key.
+
 For a throwaway environment `npm run db:push` syncs the schema without a migration file.
 Never use `db:push` against production.
 
