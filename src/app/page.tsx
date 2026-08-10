@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { FactionSigil, OreCore } from '@/components/hud-art'
 import { Eyebrow } from '@/components/ui'
 import { getSessionContext } from '@/lib/session'
 
@@ -25,10 +26,13 @@ const LIFECYCLE = [
   },
 ]
 
+/**
+ * Creating a guild is not offered here on purpose: it needs an invite link,
+ * and a button that leads to "you cannot do this" is worse than no button.
+ */
 const ACTIONS = [
   { href: '/login', label: 'Sign in', primary: true },
   { href: '/register', label: 'Join a guild', primary: false },
-  { href: '/register/guild', label: 'Create a guild', primary: false },
 ]
 
 export default async function HomePage() {
@@ -36,8 +40,13 @@ export default async function HomePage() {
   if (session) redirect('/dashboard')
 
   return (
-    <main className="mx-auto grid min-h-dvh max-w-6xl grid-cols-1 items-center gap-12 px-6 py-16 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
-      <div>
+    <main className="relative mx-auto grid min-h-dvh max-w-6xl grid-cols-1 items-center gap-12 px-6 py-16 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
+      {/* The core sits behind the type, bled off the right edge, so the page
+          reads as a window onto something larger than the layout. */}
+      <OreCore className="pointer-events-none absolute -right-40 top-1/2 hidden h-[820px] w-[820px] -translate-y-1/2 opacity-70 lg:block" />
+      <OreCore className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] opacity-40 lg:hidden" />
+
+      <div className="relative">
         <Eyebrow>GuildMate — operations terminal</Eyebrow>
 
         <h1 className="mt-5 font-display text-6xl font-bold uppercase leading-[0.9] tracking-tight text-ink sm:text-7xl">
@@ -110,6 +119,15 @@ export default async function HomePage() {
           Corrections are new rows, never edits. An alt&apos;s points roll up to its main, and
           only a main can bid at auction.
         </footer>
+      </section>
+
+      <section
+        aria-label="The three nations"
+        className="relative grid gap-6 border-t border-edge pt-8 sm:grid-cols-3 lg:col-span-2"
+      >
+        {(['BELLATO', 'CORA', 'ACCRETIA'] as const).map((nation) => (
+          <FactionSigil key={nation} nation={nation} />
+        ))}
       </section>
     </main>
   )

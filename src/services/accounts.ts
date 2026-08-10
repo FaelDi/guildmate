@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/db'
 import { characters, guildSettings, guilds, users } from '@/db/schema'
@@ -284,6 +284,37 @@ export async function createGuildWithLeader(
 // ---------------------------------------------------------------------------
 // Characters
 // ---------------------------------------------------------------------------
+
+/**
+ * The public guild directory shown on the join screen.
+ *
+ * Counts are aggregated in SQL and no member is ever named: someone who has
+ * not joined yet may see how big a guild is, never who is in it. Deleted
+ * accounts are excluded entirely - a revoked member is not a member.
+ */
+export async function listGuildDirectory(limit = 50) {
+  return db
+    .select({
+      id: guilds.id,
+      name: guilds.name,
+      slug: guilds.slug,
+      tag: guilds.tag,
+      isActive: guilds.isActive,
+      createdAt: guilds.createdAt,
+      members: sql<number>`count(${users.id}) filter (where ${users.deletedAt} is null)`.mapWith(Number),
+      active: sql<number>`count(${users.id}) filter (
+        where ${users.deletedAt} is null and ${users.isActive} and ${users.status} = 'ACTIVE'
+      )`.mapWith(Number),
+      suspended: sql<number>`count(${users.id}) filter (
+        where ${users.deletedAt} is null and (not ${users.isActive} or ${users.status} <> 'ACTIVE')
+      )`.mapWith(Number),
+    })
+    .from(guilds)
+    .leftJoin(users, eq(users.guildId, guilds.id))
+    .groupBy(guilds.id)
+    .orderBy(desc(sql`count(${users.id})`), guilds.name)
+    .limit(limit)
+}
 
 export async function listOwnCharacters(userId: string) {
   return db

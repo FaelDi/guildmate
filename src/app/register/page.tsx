@@ -1,51 +1,69 @@
-'use client'
-
-import { useActionState } from 'react'
 import Link from 'next/link'
-import { registerAction } from '@/app/actions/auth'
-import { CharacterFields } from '@/components/character-fields'
-import { FormMessage, SubmitButton } from '@/components/form'
-import { Field, Input, Panel } from '@/components/ui'
+import { JoinGuildForm } from '@/components/join-guild-form'
+import { Badge, Empty, Panel, Table } from '@/components/ui'
+import { listGuildDirectory } from '@/services/accounts'
 
-export default function RegisterPage() {
-  const [state, formAction] = useActionState(registerAction, null)
+export const dynamic = 'force-dynamic'
+
+export default async function RegisterPage() {
+  const directory = await listGuildDirectory()
+  const joinable = directory.filter((guild) => guild.isActive)
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6 py-16">
-      <Link href="/" className="mb-6 font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
-        GuildMate
-      </Link>
+    <main className="mx-auto grid min-h-dvh max-w-5xl grid-cols-1 items-start gap-8 px-6 py-16 lg:grid-cols-[1fr_1fr]">
+      <div className="lg:col-span-2">
+        <Link href="/" className="font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
+          GuildMate
+        </Link>
+      </div>
 
       <Panel title="Join a guild" subtitle="Your account and your first character.">
-        <form action={formAction} className="space-y-4">
-          <Field label="Guild" hint="The guild identifier your leader gave you.">
-            <Input name="guildSlug" required placeholder="crimson-legion" />
-          </Field>
+        <JoinGuildForm
+          guilds={joinable.map((guild) => ({
+            slug: guild.slug,
+            name: guild.name,
+            tag: guild.tag,
+          }))}
+        />
 
-          <Field label="Email">
-            <Input name="email" type="email" required autoComplete="email" />
-          </Field>
-
-          <Field label="Password" hint="At least 10 characters.">
-            <Input name="password" type="password" required minLength={10} autoComplete="new-password" />
-          </Field>
-
-          <div className="border-t border-edge pt-4">
-            <CharacterFields />
-          </div>
-
-          <FormMessage state={state} />
-
-          <SubmitButton className="w-full">Create account</SubmitButton>
-        </form>
+        <p className="mt-5 text-xs text-muted">
+          Already a member?{' '}
+          <Link href="/login" className="text-ore hover:underline">
+            Sign in
+          </Link>
+        </p>
       </Panel>
 
-      <p className="mt-5 text-center text-xs text-muted">
-        Already a member?{' '}
-        <Link href="/login" className="text-ore hover:underline">
-          Sign in
-        </Link>
-      </p>
+      <Panel
+        title="Guild directory"
+        subtitle="Headcount only. Who is in a guild is visible to its members, not to the public."
+      >
+        {directory.length === 0 ? (
+          <Empty>No guild has been created yet.</Empty>
+        ) : (
+          <Table head={['Guild', 'Status', 'Members', 'Active', 'Restricted']}>
+            {directory.map((guild) => (
+              <tr key={guild.id}>
+                <td className="px-3 py-2.5">
+                  <span className="font-medium text-ink">{guild.name}</span>
+                  {guild.tag && (
+                    <span className="ml-1.5 font-mono text-[11px] text-muted">[{guild.tag}]</span>
+                  )}
+                  <div className="font-mono text-[11px] text-muted/70">{guild.slug}</div>
+                </td>
+                <td className="px-3 py-2.5">
+                  <Badge value={guild.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                </td>
+                <td className="px-3 py-2.5 font-mono tabular-nums text-ink">{guild.members}</td>
+                <td className="px-3 py-2.5 font-mono tabular-nums text-refined">{guild.active}</td>
+                <td className="px-3 py-2.5 font-mono tabular-nums text-muted">
+                  {guild.suspended}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Panel>
     </main>
   )
 }
