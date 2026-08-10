@@ -3,7 +3,7 @@ import 'server-only'
 import { and, desc, eq, inArray, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { db, type Executor } from '@/db'
-import { auctionBids, auctions, characters, pointLedger } from '@/db/schema'
+import { auctionBids, auctions, characters, pointLedger, users } from '@/db/schema'
 import { recordAudit } from '@/lib/audit'
 import { AppError, unwrap } from '@/lib/errors'
 import { loadRestrictions } from '@/lib/restrictions'
@@ -122,8 +122,18 @@ export async function placeBid(params: {
   const { actor, auctionId, characterId, amount, settings, now } = params
 
   return db.transaction(async (tx) => {
-    // Serialize bidders on this auction: without the row lock, two concurrent
-    // bids could both read the same current price and both "win".
+    // Two locks, and both are load bearing.
+    //
+    // The bidder's own row is taken FIRST, and always in that order, so two
+    // bids by the same account serialise even when they are on different
+    // auctions. Locking only the auction left the balance a shared resource
+    // read outside any lock: with 100 confirmed points and two open auctions,
+    // both bids read 100, both passed, and the same points won twice.
+    //
+    // Auction-then-user in one path and user-then-auction in another would
+    // deadlock, which is why the user lock comes first everywhere.
+    await tx.select({ id: users.id }).from(users).where(eq(users.id, actor.id)).limit(1).for('update')
+
     const [auction] = await tx
       .select()
       .from(auctions)

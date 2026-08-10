@@ -95,7 +95,8 @@ or above their own.
 | Spending points from an event about to be cancelled | Only `CONFIRMED` points are spendable; awards are `PENDING` until quorum. |
 | Code brute force | 8 characters from a 32-symbol alphabet, hashed with a server-side pepper, plus per-account rate limiting on redemption. |
 | Sniping an auction | `applyAntiSnipe` extends the clock on a late bid. |
-| Double-spending points across two bids | Bids write a negative `AUCTION_HOLD` inside a transaction with the auction row locked. |
+| Double-spending points across two bids | The bidder's own row is locked **first**, then the auction: the hold alone did not stop the same balance funding two simultaneous bids on different auctions. |
+| Admin invents an event and pays himself | Two controls, because there are two doors: `evaluateRegistration` refuses the event's creator, and `resolveEventQuorum` makes the guild quorum a floor so a quorum of 1 cannot be set. |
 | Colluding accounts | IP and user-agent fingerprints (hashed, never raw) recorded per registration and surfaced in the admin log. |
 
 ## Credentials and secrets

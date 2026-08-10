@@ -31,6 +31,7 @@ import {
   minimumBid,
   planPointsChange,
   resolveCodeExpiry,
+  resolveEventQuorum,
   resolveEventSweep,
   MAX_CHARACTERS_PER_ACCOUNT,
   type Actor,
@@ -274,6 +275,69 @@ describe('evaluateRegistration', () => {
       registrationParams({ character: character({ guildId: 'other-guild' }) }),
     )
     expect(!result.ok && result.code).toBe('FORBIDDEN')
+  })
+})
+
+describe('the lone admin cannot pay themselves', () => {
+  it('refuses the admin who created the event from redeeming its own code', () => {
+    const result = evaluateRegistration(
+      registrationParams({
+        actor: actor({ id: 'admin-1', role: 'LEADER' }),
+        character: character({ userId: 'admin-1' }),
+        event: event({ createdByUserId: 'admin-1' }),
+      }),
+    )
+    expect(!result.ok && result.code).toBe('SELF_REGISTRATION_FORBIDDEN')
+  })
+
+  it('refuses it through one of their alts, because the check is on the account', () => {
+    const result = evaluateRegistration(
+      registrationParams({
+        actor: actor({ id: 'admin-1', role: 'LEADER' }),
+        character: character({ id: 'alt-1', userId: 'admin-1', kind: 'ALT', mainCharacterId: 'main-1' }),
+        event: event({ createdByUserId: 'admin-1' }),
+      }),
+    )
+    expect(!result.ok && result.code).toBe('SELF_REGISTRATION_FORBIDDEN')
+  })
+
+  it('still lets everybody else redeem the code', () => {
+    const result = evaluateRegistration(
+      registrationParams({ event: event({ createdByUserId: 'someone-else' }) }),
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  it('treats the guild quorum as a floor, not a default', () => {
+    // settings.minParticipants is 3 in these fixtures.
+    const below = resolveEventQuorum({ requested: 2, settings })
+    expect(!below.ok && below.code).toBe('INVALID_QUORUM')
+
+    const one = resolveEventQuorum({ requested: 1, settings })
+    expect(!one.ok && one.code).toBe('INVALID_QUORUM')
+
+    expect(resolveEventQuorum({ requested: 3, settings }).ok).toBe(true)
+    expect(resolveEventQuorum({ requested: 50, settings }).ok).toBe(true)
+  })
+
+  it('falls back to the guild quorum when the admin sets none', () => {
+    const result = resolveEventQuorum({ requested: undefined, settings })
+    expect(result.ok && result.value).toBe(3)
+  })
+
+  it('refuses a quorum that is not a whole number above zero', () => {
+    for (const requested of [0, -1, 2.5]) {
+      const result = resolveEventQuorum({ requested, settings })
+      expect(!result.ok && result.code).toBe('INVALID_QUORUM')
+    }
+  })
+
+  it('never lets a guild configure its way below one participant', () => {
+    const result = resolveEventQuorum({
+      requested: undefined,
+      settings: { ...settings, minParticipants: 0 },
+    })
+    expect(result.ok && result.value).toBe(1)
   })
 })
 

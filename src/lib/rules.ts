@@ -403,6 +403,18 @@ export function evaluateRegistration(params: {
     return deny('CODE_EXPIRED', 'This event code has expired')
   }
 
+  // The admin who created the event is handed the plaintext code and nobody
+  // else has to have seen it. Letting them redeem it would be the same
+  // self-payment `evaluateAdminGrant` refuses, through a different door - so
+  // the check is on the owning account, exactly as it is there, and an alt
+  // does not help.
+  if (character.userId === event.createdByUserId) {
+    return deny(
+      'SELF_REGISTRATION_FORBIDDEN',
+      'You cannot register for an event you created. Ask another admin to score you.',
+    )
+  }
+
   if (accountAlreadyRegistered) {
     return deny('ALREADY_REGISTERED', 'This account already registered for this event')
   }
@@ -546,6 +558,32 @@ export function planPointsChange(params: {
   })
 
   return { delta, adjustments }
+}
+
+/**
+ * The quorum an admin may set for one event.
+ *
+ * The guild's `minParticipants` is a **floor**, not a suggestion. It used to be
+ * read as a default only, so an admin could pass 1 in the form, redeem their
+ * own code, and watch the event confirm on a single registration - which is
+ * precisely the "lone admin invents an event and pays himself" attack the
+ * setting exists to prevent.
+ */
+export function resolveEventQuorum(params: {
+  requested: number | undefined
+  settings: SettingsLike
+}): RuleResult<number> {
+  const { requested, settings } = params
+  const floor = Math.max(1, settings.minParticipants)
+
+  if (requested === undefined) return allow(floor)
+  if (!Number.isInteger(requested) || requested < 1) {
+    return deny('INVALID_QUORUM', 'The minimum number of participants must be at least 1')
+  }
+  if (requested < floor) {
+    return deny('INVALID_QUORUM', `This guild requires at least ${floor} participants`)
+  }
+  return allow(requested)
 }
 
 /** The join window an admin may set, clamped to the guild's ceiling. */

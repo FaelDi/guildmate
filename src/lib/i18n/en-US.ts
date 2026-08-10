@@ -402,6 +402,8 @@ export const enUS: Dictionary = {
     ALREADY_REGISTERED: 'This account already registered for this event',
     LEVEL_TOO_LOW: 'Your level is too low for this event',
     ALT_NOT_ELIGIBLE: 'Only main characters can earn points in this guild',
+    SELF_REGISTRATION_FORBIDDEN:
+      'You cannot register for an event you created. Ask another admin to score you.',
     SELF_GRANT_FORBIDDEN: 'An admin cannot award points to their own account',
     INVALID_TTL: 'The code lifetime is not valid',
     INVALID_POINTS: 'Points must be a whole number between 1 and 100000',

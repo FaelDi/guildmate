@@ -410,6 +410,8 @@ export const ptBR = {
     ALREADY_REGISTERED: 'Esta conta já se registrou neste evento',
     LEVEL_TOO_LOW: 'Seu nível é baixo demais para este evento',
     ALT_NOT_ELIGIBLE: 'Só personagens principais ganham pontos nesta guild',
+    SELF_REGISTRATION_FORBIDDEN:
+      'Você não pode se registrar num evento que você mesmo criou. Peça a outro admin para te pontuar.',
     SELF_GRANT_FORBIDDEN: 'Um admin não pode dar pontos para a própria conta',
     INVALID_TTL: 'A duração do código é inválida',
     INVALID_POINTS: 'Os pontos precisam ser um número inteiro entre 1 e 100000',

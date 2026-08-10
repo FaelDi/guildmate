@@ -23,6 +23,7 @@ import {
   evaluateRegistration,
   planPointsChange,
   resolveCodeExpiry,
+  resolveEventQuorum,
   resolveConfirmationDeadline,
   resolveEventSweep,
   type Actor,
@@ -120,10 +121,9 @@ export async function createEvent(params: {
   if (!Number.isInteger(input.pointsValue) || input.pointsValue < 1 || input.pointsValue > 100_000) {
     throw new AppError('INVALID_POINTS', 'Points must be a whole number between 1 and 100000')
   }
-  const minParticipants = input.minParticipants ?? settings.minParticipants
-  if (!Number.isInteger(minParticipants) || minParticipants < 1) {
-    throw new AppError('INVALID_QUORUM', 'The minimum number of participants must be at least 1')
-  }
+  const minParticipants = unwrap(
+    resolveEventQuorum({ requested: input.minParticipants, settings }),
+  )
 
   const registrationClosesAt = unwrap(
     resolveCodeExpiry({ ttlMinutes: input.ttlMinutes, settings, now }),

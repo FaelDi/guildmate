@@ -186,6 +186,19 @@ over its rolling 24h registration cap; or the character is an ALT in a guild who
 The uniqueness constraint is on `(event_id, user_id)`, not `(event_id, character_id)` — one
 registration **per account**, so a player cannot claim the same event once per alt.
 
+### An admin cannot pay themselves
+
+Two doors write an `EVENT_AWARD`, and both are shut:
+
+| Door | Control |
+|---|---|
+| Manual grant | `evaluateAdminGrant` refuses when the target character's owning **account** is the admin's, so an alt does not help |
+| Redeeming a code | `evaluateRegistration` refuses when the character's account created the event — the creator is handed the plaintext code and nobody else need ever see it |
+
+And the quorum an admin picks is bounded from below: `resolveEventQuorum` treats
+`guild_settings.min_participants` as a **floor**, not a default. Without that, an admin could
+set a quorum of 1 and confirm an event alone.
+
 ### Manual scoring by an admin
 
 `evaluateAdminGrant` additionally requires:
