@@ -23,7 +23,23 @@ const globalForDb = globalThis as unknown as { __guildmateSql?: postgres.Sql }
 
 const sql =
   globalForDb.__guildmateSql ??
-  postgres(connectionString, { max: 1, prepare: false, idle_timeout: 20 })
+  postgres(connectionString, {
+    max: 1,
+    prepare: false,
+    idle_timeout: 20,
+    /**
+     * postgres.js defaults to `ssl: false`, and Supabase's pooler accepts a
+     * plaintext connection - so the default was shipping every query, and the
+     * database password, unencrypted across the public internet.
+     *
+     * `require` negotiates TLS without pinning a CA. It stops passive
+     * interception, which is the realistic threat between two clouds; it does
+     * not stop an active man in the middle. For that, set
+     * `NODE_EXTRA_CA_CERTS` to Supabase's CA bundle and switch this to
+     * `{ rejectUnauthorized: true }` - see docs/DEPLOYMENT.md.
+     */
+    ssl: 'require',
+  })
 
 if (process.env.NODE_ENV !== 'production') {
   globalForDb.__guildmateSql = sql

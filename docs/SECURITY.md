@@ -116,6 +116,16 @@ or above their own.
 - A resource the caller may not see returns the same response as one that does not exist.
 - A wrong event code and an expired one are reported identically.
 
+## Transport to the database
+
+`postgres.js` defaults to **no TLS**, and Supabase's pooler accepts a plaintext connection —
+so the default shipped every query and the database password unencrypted. The client now sets
+`ssl: 'require'`, which encrypts without pinning a CA: enough against passive interception,
+not against an active man in the middle.
+
+For the stronger setting, download Supabase's CA bundle, point `NODE_EXTRA_CA_CERTS` at it
+and change `ssl` to `{ rejectUnauthorized: true }` in `src/db/index.ts`.
+
 ## Known limitations
 
 - **Rate limiting is per serverless instance** (`src/lib/rate-limit.ts`). A burst spread
@@ -130,6 +140,14 @@ or above their own.
   connection interceptable. `src/lib/runtime-guards.ts` refuses to boot in production when it
   is set, and warns in development — but it cannot protect a process that never imports it,
   such as an ad-hoc script.
+- **A banned member can sign up again with another address.** Moderation binds to the
+  `users` row, and there is no proof of identity beyond an email that registration
+  auto-confirms. Sign-up is rate limited per address, which slows it but does not stop it.
+  Real mitigation is email confirmation (needs SMTP configured in Supabase) or an
+  invite-only join policy, which this app supports per guild.
+- **Emails are not verified.** `adminCreateUser` passes `email_confirm: true`, so an address
+  is taken on trust. Turning confirmation on without working SMTP would lock everybody out,
+  so it stays a deliberate deployment decision.
 - **Cancelling an already-confirmed event can push a balance negative** if the member spent
   the points. This is deliberate — the balance stays honest and bidding is blocked until it
   recovers — and requires an explicit `force` flag.

@@ -24,6 +24,7 @@ import {
   evaluateCharacterRetire,
   evaluateCharacterUpdate,
   evaluateListingCreate,
+  evaluateMarketAccess,
   evaluateMainSwitch,
   evaluateRegistration,
   isGuildAdmin,
@@ -475,6 +476,67 @@ describe('planPointsChange', () => {
       { amount: adjustment?.amount ?? 0, state: 'CONFIRMED' },
     ])
     expect(balance.available).toBe(150)
+  })
+})
+
+describe('re-scoring cannot pay the admin doing it', () => {
+  const registrations = [
+    { id: 'r1', userId: 'member-1', characterId: 'c1', status: 'CONFIRMED' as const },
+    { id: 'r2', userId: 'admin-1', characterId: 'c2', status: 'CONFIRMED' as const },
+  ]
+
+  it('skips the acting admin registration', () => {
+    const plan = planPointsChange({
+      oldPoints: 100,
+      newPoints: 5000,
+      registrations,
+      excludeUserId: 'admin-1',
+    })
+    expect(plan.adjustments.map((a) => a.userId)).toEqual(['member-1'])
+    expect(plan.delta).toBe(4900)
+  })
+
+  it('adjusts everybody when no admin is excluded', () => {
+    const plan = planPointsChange({ oldPoints: 100, newPoints: 150, registrations })
+    expect(plan.adjustments).toHaveLength(2)
+  })
+})
+
+describe('the store restriction covers editing, not just posting', () => {
+  const barred: RestrictionLike[] = [
+    { type: 'NO_MARKET', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
+  ]
+
+  it('refuses a barred member', () => {
+    const result = evaluateMarketAccess({ actor: actor(), restrictions: barred, now: NOW })
+    expect(!result.ok && result.code).toBe('RESTRICTED')
+  })
+
+  it('lets an unrestricted member through', () => {
+    expect(evaluateMarketAccess({ actor: actor(), restrictions: [], now: NOW }).ok).toBe(true)
+  })
+
+  it('refuses a banned account before it looks at the store restriction', () => {
+    const result = evaluateMarketAccess({
+      actor: actor(),
+      restrictions: [
+        { type: 'BAN', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
+      ],
+      now: NOW,
+    })
+    expect(!result.ok && result.code).toBe('ACCOUNT_BANNED')
+  })
+
+  it('ignores a restriction that already lapsed', () => {
+    const lapsed: RestrictionLike[] = [
+      {
+        type: 'NO_MARKET',
+        startsAt: new Date(NOW.getTime() - 7_200_000),
+        expiresAt: new Date(NOW.getTime() - 1),
+        revokedAt: null,
+      },
+    ]
+    expect(evaluateMarketAccess({ actor: actor(), restrictions: lapsed, now: NOW }).ok).toBe(true)
   })
 })
 

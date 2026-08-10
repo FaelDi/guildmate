@@ -9,6 +9,7 @@ import { AppError, unwrap } from '@/lib/errors'
 import {
   authorizeResource,
   evaluateListingCreate,
+  evaluateMarketAccess,
   type Actor,
   type CharacterLike,
   type RestrictionLike,
@@ -140,11 +141,14 @@ export async function createListing(params: {
  */
 export async function updateListing(params: {
   actor: Actor
+  restrictions: readonly RestrictionLike[]
   listingId: string
   patch: Partial<ListingInputDto>
   now: Date
 }): Promise<void> {
-  const { actor, listingId, patch, now } = params
+  const { actor, restrictions, listingId, patch, now } = params
+  // A member barred from the store may not rewrite what they already posted.
+  unwrap(evaluateMarketAccess({ actor, restrictions, now }))
 
   await db.transaction(async (tx) => {
     const [listing] = await tx
@@ -199,12 +203,14 @@ export async function updateListing(params: {
 
 export async function closeListing(params: {
   actor: Actor
+  restrictions: readonly RestrictionLike[]
   listingId: string
   status: 'SOLD' | 'CANCELLED'
   soldToCharacterId?: string | null
   now: Date
 }): Promise<void> {
-  const { actor, listingId, status, soldToCharacterId, now } = params
+  const { actor, restrictions, listingId, status, soldToCharacterId, now } = params
+  unwrap(evaluateMarketAccess({ actor, restrictions, now }))
 
   await db.transaction(async (tx) => {
     const [listing] = await tx

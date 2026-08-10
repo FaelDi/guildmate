@@ -36,7 +36,7 @@ Copy `.env.example` to `.env.local` for development, and set the same keys in
 | `SUPABASE_JWT_SECRET` | Optional. **Leave empty** unless the project signs JWTs symmetrically |
 | `SUPABASE_STORAGE_BUCKET` | Bucket for item screenshots |
 | `CRON_SECRET` | Bearer token Vercel Cron sends. `openssl rand -hex 32` |
-| `EVENT_CODE_PEPPER` | Mixed into event code hashes. `openssl rand -hex 32` |
+| `EVENT_CODE_PEPPER` | Mixed into event codes, invite tokens and fingerprints. **At least 32 characters, and the app refuses to boot in production without it.** `openssl rand -hex 32` |
 
 > **No variable is prefixed `NEXT_PUBLIC_`, and none should be.** The browser never talks to
 > Supabase — see [SECURITY.md](./SECURITY.md).

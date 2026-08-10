@@ -1,10 +1,11 @@
 import 'server-only'
 
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db, type Executor } from '@/db'
 import {
   characters,
   eventRegistrations,
+  marketListings,
   pointLedger,
   userRestrictions,
   users,
@@ -275,7 +276,19 @@ export async function revokeAccessPermanently(params: {
     // Their characters stop being selectable anywhere.
     await tx.update(characters).set({ isActive: false, updatedAt: now }).where(eq(characters.userId, userId))
 
-    // Live market listings are withdrawn; points and history are preserved.
+    // Live market listings are withdrawn. The comment used to promise this
+    // while nothing did it, so a permanently revoked member kept advertising
+    // to a guild they can no longer be reached in. Points and history stay.
+    await tx
+      .update(marketListings)
+      .set({ status: 'CANCELLED', updatedAt: now })
+      .where(
+        and(
+          eq(marketListings.sellerUserId, userId),
+          inArray(marketListings.status, ['ACTIVE', 'RESERVED']),
+        ),
+      )
+
     await tx.insert(userRestrictions).values({
       guildId: target.guildId,
       userId,

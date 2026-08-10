@@ -81,7 +81,11 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
 
   // A token minted before the account was banned or deactivated is refused
   // here, not merely hidden in the UI.
-  const access = evaluateAccountAccess(user, restrictions, now)
+  //
+  // `lockedUntil` is deliberately dropped: it is a brute-force brake on the
+  // sign-in form, and anyone who knew a member's address could otherwise trip
+  // it with wrong passwords and kick that member out of a live session.
+  const access = evaluateAccountAccess({ ...user, lockedUntil: null }, restrictions, now)
   if (!access.ok) return null
 
   return {

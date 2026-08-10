@@ -38,6 +38,33 @@ function assertTlsVerificationEnabled(): void {
   console.warn(`[security] WARNING: ${message}`)
 }
 
+/**
+ * EVENT_CODE_PEPPER is mixed into every event-code digest, every invite-token
+ * digest, both blind indexes and every IP fingerprint. Unset, all of them fall
+ * back to a constant that is visible in this repository - which means a leaked
+ * database dump yields codes and tokens a reader can recompute offline.
+ *
+ * Development gets the fallback and a warning, because a fresh clone should
+ * run. Production refuses to boot: a peppered digest with a published pepper
+ * is not peppered.
+ */
+function assertPepperConfigured(): void {
+  if ((process.env.EVENT_CODE_PEPPER ?? '').length >= 32) return
+
+  const message =
+    'EVENT_CODE_PEPPER is unset or shorter than 32 characters. Event codes, invite tokens '
+    + 'and request fingerprints then fall back to a hardcoded key that is public in the '
+    + 'source. Generate one with: openssl rand -hex 32'
+
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build'
+
+  if (process.env.NODE_ENV === 'production' && !isBuildPhase) {
+    throw new Error(`[security] ${message}`)
+  }
+  console.warn(`[security] WARNING: ${message}`)
+}
+
 assertTlsVerificationEnabled()
+assertPepperConfigured()
 
 export {}

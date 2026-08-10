@@ -249,7 +249,13 @@ export async function changeEventPoints(params: {
   }
 
   return db.transaction(async (tx) => {
-    const event = await loadEvent(eventId, tx)
+    // Locked, not merely read: the delta is computed from the current value,
+    // so two concurrent re-scores without this each append a full delta while
+    // the value moves once - double-crediting everybody registered.
+    const [locked] = await tx.select().from(events).where(eq(events.id, eventId)).limit(1).for('update')
+    if (!locked) throw new AppError('NOT_FOUND', 'Event not found', 404)
+    const event = locked
+
     unwrap(authorizeAdminAction(actor, event.guildId))
     if (event.status === 'CANCELLED') {
       throw new AppError('EVENT_CANCELLED', 'A cancelled event cannot be re-scored')
@@ -270,6 +276,8 @@ export async function changeEventPoints(params: {
       oldPoints: event.pointsValue,
       newPoints,
       registrations,
+      // The admin pressing the button does not get to re-score themselves.
+      excludeUserId: actor.id,
     })
 
     await tx

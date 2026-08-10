@@ -41,11 +41,12 @@ export async function updateListingAction(
   formData: FormData,
 ): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
-    const { actor, now } = await requireSession()
+    const { actor, restrictions, now } = await requireSession()
     // Ownership is enforced inside the service, not here: the check belongs
     // next to the loaded row.
     await updateListing({
       actor,
+      restrictions,
       listingId: String(formData.get('listingId') ?? ''),
       patch: readListingInput(formData),
       now,
@@ -62,9 +63,10 @@ export async function closeListingAction(
   formData: FormData,
 ): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
-    const { actor, now } = await requireSession()
+    const { actor, restrictions, now } = await requireSession()
     await closeListing({
       actor,
+      restrictions,
       listingId: String(formData.get('listingId') ?? ''),
       status: formData.get('status') === 'SOLD' ? 'SOLD' : 'CANCELLED',
       now,

@@ -62,6 +62,13 @@ export async function registerAccount(
   const parsed = registerSchema.parse(input)
   const email = parsed.email.toLowerCase()
   const now = options.now ?? new Date()
+
+  // Quorum is counted per account, so free unlimited account creation is an
+  // anti-fraud problem, not just a spam one.
+  const burst = rateLimit({ key: `register:${email}`, limit: 3, windowMs: 3_600_000 })
+  if (!burst.allowed) {
+    throw new AppError('RATE_LIMITED', 'Too many sign-up attempts. Try again later.', 429)
+  }
   const token = options.token?.trim() ?? ''
 
   // A recruitment link names its own guild. Trusting the slug alongside it
@@ -205,7 +212,9 @@ export async function signIn(input: z.infer<typeof signInSchema>): Promise<void>
 
   if (user) {
     if (user.lockedUntil && user.lockedUntil.getTime() > now.getTime()) {
-      throw new AppError('ACCOUNT_LOCKED', 'Too many failed attempts. Try again later.', 429)
+      // Same message as a wrong password: saying "locked" confirms the address
+      // is registered, which turns this form into an enumeration oracle.
+      throw new AppError('INVALID_CREDENTIALS', GENERIC_SIGN_IN_ERROR, 401)
     }
     const access = evaluateAccountAccess(user, await loadRestrictions(user.id), now)
     if (!access.ok) {

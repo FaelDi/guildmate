@@ -528,6 +528,13 @@ export function planPointsChange(params: {
     characterId: string
     status: 'PENDING' | 'CONFIRMED' | 'REVERSED'
   }[]
+  /**
+   * The admin doing the re-scoring. Their own registration is skipped: an
+   * admin registered on an event could otherwise hand themselves an arbitrary
+   * confirmed delta in one call, which is the same self-payment
+   * `evaluateAdminGrant` refuses.
+   */
+  excludeUserId?: string
 }): {
   delta: number
   adjustments: {
@@ -543,6 +550,7 @@ export function planPointsChange(params: {
 
   const adjustments = params.registrations.flatMap((r) => {
     if (r.status === 'REVERSED') return []
+    if (params.excludeUserId && r.userId === params.excludeUserId) return []
     // The correction inherits the award's state: points that were not yet
     // spendable stay pending, confirmed ones move immediately.
     const state: 'PENDING' | 'CONFIRMED' = r.status
@@ -706,6 +714,34 @@ export type ListingInput = {
   quantity: number
 }
 
+/**
+ * May this account touch the store at all?
+ *
+ * Split out because `NO_MARKET` used to be checked only when a listing was
+ * created: a member barred from the store could still rewrite the price and
+ * the description of everything they had already posted, which is most of what
+ * the restriction is meant to stop.
+ */
+export function evaluateMarketAccess(params: {
+  actor: Actor
+  restrictions: readonly RestrictionLike[]
+  now: Date
+}): RuleResult<undefined> {
+  const { actor, restrictions, now } = params
+
+  const access = evaluateAccountAccess(
+    { status: actor.status, isActive: actor.isActive, deletedAt: null },
+    restrictions,
+    now,
+  )
+  if (!access.ok) return access
+
+  if (activeRestrictionTypes(restrictions, now).has('NO_MARKET')) {
+    return deny('RESTRICTED', 'You are currently barred from the guild store')
+  }
+  return allow(undefined)
+}
+
 export function evaluateListingCreate(params: {
   actor: Actor
   character: CharacterLike
@@ -715,15 +751,8 @@ export function evaluateListingCreate(params: {
 }): RuleResult<ListingInput> {
   const { actor, character, restrictions, input, now } = params
 
-  const access = evaluateAccountAccess(
-    { status: actor.status, isActive: actor.isActive, deletedAt: null },
-    restrictions,
-    now,
-  )
+  const access = evaluateMarketAccess({ actor, restrictions, now })
   if (!access.ok) return access
-  if (activeRestrictionTypes(restrictions, now).has('NO_MARKET')) {
-    return deny('RESTRICTED', 'You are currently barred from listing items')
-  }
 
   // A member lists items owned by their own characters, never someone else's.
   if (character.userId !== actor.id || character.guildId !== actor.guildId) {
