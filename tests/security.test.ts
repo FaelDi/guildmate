@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { registerSchema } from '@/lib/account-schemas'
 import { parseConnectionString } from '@/lib/connection-string'
 import { AppError, describeError, runAction } from '@/lib/errors'
 import { redact } from '@/lib/redact'
@@ -261,5 +262,35 @@ describe('action error reporting', () => {
     expect(logged.errorCode).toBe('42P01')
     expect(logged.message).toBe('relation "guilds" does not exist')
     expect(logged.postgres.routine).toBe('parserOpenTable')
+  })
+})
+
+describe('sign-up input', () => {
+  const base = {
+    email: 'player@example.com',
+    password: 'longenough123',
+    characterName: 'piradinhu90',
+    race: 'CORA',
+    biosuit: 'Arbiter',
+    level: 56,
+    kind: 'ALT',
+  }
+
+  it('accepts a recruitment sign-up that posts no guild slug at all', () => {
+    expect(registerSchema.parse(base).guildSlug).toBeUndefined()
+  })
+
+  it('treats the empty slug an unfilled form field submits as absent, not malformed', () => {
+    expect(registerSchema.parse({ ...base, guildSlug: '' }).guildSlug).toBeUndefined()
+  })
+
+  it('keeps accepting a directory sign-up that names its guild', () => {
+    expect(registerSchema.parse({ ...base, guildSlug: 'iron-vanguard' }).guildSlug).toBe(
+      'iron-vanguard',
+    )
+  })
+
+  it('still refuses a malformed slug when one is given', () => {
+    expect(() => registerSchema.parse({ ...base, guildSlug: 'x' })).toThrow()
   })
 })

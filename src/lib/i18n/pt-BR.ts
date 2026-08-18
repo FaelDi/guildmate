@@ -370,6 +370,7 @@ export const ptBR = {
     RATE_LIMITED: 'Tentativas demais. Espere um pouco.',
     REGISTRATION_FAILED: 'Não foi possível criar esta conta',
     GUILD_NOT_FOUND: 'Essa guild não existe ou não está aceitando membros',
+    GUILD_REQUIRED: 'Escolha uma guild para entrar',
     GUILD_EXISTS: 'Já existe uma guild com esse nome',
     VALIDATION_ERROR: 'Confira o formulário e tente de novo',
     INTERNAL_ERROR: 'Algo deu errado. Tente de novo.',

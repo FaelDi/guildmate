@@ -365,6 +365,7 @@ export const enUS: Dictionary = {
     RATE_LIMITED: 'Too many attempts. Try again shortly.',
     REGISTRATION_FAILED: 'This account could not be created',
     GUILD_NOT_FOUND: 'That guild does not exist or is not accepting members',
+    GUILD_REQUIRED: 'Choose a guild to join',
     GUILD_EXISTS: 'A guild with that name already exists',
     VALIDATION_ERROR: 'Check the form and try again',
     INTERNAL_ERROR: 'Something went wrong. Try again.',

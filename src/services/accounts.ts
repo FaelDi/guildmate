@@ -13,6 +13,7 @@ import {
   memberInvites,
   users,
 } from '@/db/schema'
+import { registerSchema, type RegisterInput } from '@/lib/account-schemas'
 import { recordAudit } from '@/lib/audit'
 import { AppError, unwrap } from '@/lib/errors'
 import { rateLimit } from '@/lib/rate-limit'
@@ -27,25 +28,6 @@ const LOCKOUT_MINUTES = 15
 
 /** Deliberately identical for every failure mode: no user enumeration. */
 const GENERIC_SIGN_IN_ERROR = 'Invalid email or password'
-
-export const passwordSchema = z
-  .string()
-  .min(10, 'The password must have at least 10 characters')
-  .max(200)
-
-export const registerSchema = z.object({
-  email: z.string().trim().email().max(254),
-  password: passwordSchema,
-  /** Ignored when a recruitment token is present: the link names the guild. */
-  guildSlug: z.string().trim().min(2).max(60),
-  characterName: z.string().trim().min(2).max(40),
-  race: z.enum(['BELLATO', 'CORA', 'ACCRETIA']),
-  biosuit: z.string().trim().min(1).max(60),
-  level: z.number().int().min(1).max(999),
-  kind: z.enum(['MAIN', 'ALT']),
-})
-
-export type RegisterInput = z.infer<typeof registerSchema>
 
 /**
  * Creates the credential in Supabase Auth and the domain row in our database.
@@ -76,9 +58,14 @@ export async function registerAccount(
   const invite = token ? await findMemberInviteByToken(token) : null
   if (token && !invite) throw new AppError('INVITE_INVALID', 'This invite link is not valid')
 
+  if (!invite && !parsed.guildSlug) {
+    // The join form always posts a slug; only a hand-built request omits both.
+    throw new AppError('GUILD_REQUIRED', 'Choose a guild to join')
+  }
+
   const [guild] = invite
     ? await db.select().from(guilds).where(eq(guilds.id, invite.guildId)).limit(1)
-    : await db.select().from(guilds).where(eq(guilds.slug, parsed.guildSlug)).limit(1)
+    : await db.select().from(guilds).where(eq(guilds.slug, parsed.guildSlug ?? '')).limit(1)
   if (!guild) {
     throw new AppError('GUILD_NOT_FOUND', 'That guild does not exist or is not accepting members')
   }

@@ -21,7 +21,7 @@ one, with the detail logged server-side.
 | Action | Auth | Notes |
 |---|---|---|
 | `signInAction` | public | Calls GoTrue server-side, sets httpOnly cookies. One generic failure message |
-| `registerAction` | public, or a recruitment token | Creates the Supabase credential + the domain row + the first character. With a token the guild comes from the link, and a seat is spent in the same transaction |
+| `registerAction` | public, or a recruitment token | Creates the Supabase credential + the domain row + the first character. `guildSlug` is required only without a token: with one the guild comes from the link (a slug sent alongside is ignored), and a seat is spent in the same transaction |
 | `createGuildAction` | invite token | Spends a guild invite and creates the guild, its first `LEADER` and that leader's main character. The only path that creates a guild |
 | `signOutAction` | session | Revokes the refresh token and clears cookies |
 

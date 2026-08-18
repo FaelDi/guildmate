@@ -15,8 +15,8 @@ import {
   type Actor,
   type InviteStatus,
 } from '@/lib/rules'
+import { registerSchema } from '@/lib/account-schemas'
 import { adminCreateUser } from '@/lib/supabase-auth'
-import { registerSchema } from './accounts'
 
 /**
  * Guild invites: the only door through which a guild comes into existence.
