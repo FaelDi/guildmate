@@ -61,8 +61,14 @@ export const ledgerKindEnum = pgEnum('ledger_kind', [
   'EVENT_ADJUSTMENT',
   'EVENT_REVERSAL',
   'ADMIN_ADJUSTMENT',
-  'AUCTION_HOLD',
-  'AUCTION_RELEASE',
+  /** Points locked by an active loot bet (negative). */
+  'LOOT_HOLD',
+  /** A losing or withdrawn bet handing its hold back (positive). */
+  'LOOT_RELEASE',
+  /** A deduction an admin applies to a member (negative). */
+  'PENALTY',
+  /** Undoing one penalty, exactly once and for exactly its amount (positive). */
+  'PENALTY_REVERSAL',
 ])
 
 /**
@@ -76,47 +82,40 @@ export const restrictionTypeEnum = pgEnum('restriction_type', [
   'BAN',
   'SUSPENSION',
   'NO_EVENTS',
-  'NO_AUCTION',
-  'NO_MARKET',
+  /** Barred from betting on loot. */
+  'NO_LOOT',
 ])
 
-export const itemRarityEnum = pgEnum('item_rarity', [
-  'COMMON',
-  'UNCOMMON',
-  'RARE',
-  'EPIC',
-  'LEGENDARY',
-])
+/**
+ * Who may bet on a loot item, by combat power tier.
+ * ALL   - any member.
+ * TITAN - combat power at or above the guild's Titan threshold.
+ * MEGA  - combat power at or above the guild's Mega threshold.
+ */
+export const lootRestrictionEnum = pgEnum('loot_restriction', ['ALL', 'TITAN', 'MEGA'])
 
-export const itemTypeEnum = pgEnum('item_type', [
-  'WEAPON',
-  'ARMOR',
-  'SHIELD',
-  'HELMET',
-  'GLOVES',
-  'BOOTS',
-  'ACCESSORY',
-  'BIOSUIT',
-  'MATERIAL',
-  'CONSUMABLE',
-  'OTHER',
-])
+export const lootBannerStatusEnum = pgEnum('loot_banner_status', ['OPEN', 'CLOSED'])
 
-export const listingStatusEnum = pgEnum('listing_status', [
-  'ACTIVE',
-  'RESERVED',
-  'SOLD',
-  'CANCELLED',
-  'EXPIRED',
-])
+/**
+ * OPEN      - taking bets.
+ * DRAWN     - the raffle ran; the winner is recorded on the row.
+ * CANCELLED - the banner closed before the draw; every bet was released.
+ */
+export const lootItemStatusEnum = pgEnum('loot_item_status', ['OPEN', 'DRAWN', 'CANCELLED'])
 
-export const auctionStatusEnum = pgEnum('auction_status', [
-  'DRAFT',
-  'OPEN',
-  'CLOSED',
-  'SETTLED',
-  'CANCELLED',
-])
+/**
+ * ACTIVE   - holding points.
+ * WON      - the winning bet; its hold is the price paid and is never released.
+ * RELEASED - lost or withdrawn; the hold was returned by a LOOT_RELEASE row.
+ */
+export const lootBetStatusEnum = pgEnum('loot_bet_status', ['ACTIVE', 'WON', 'RELEASED'])
+
+/**
+ * INTERVAL - every `interval_hours` from an anchor instant.
+ * DAILY    - at fixed BRT times every day.
+ * WEEKLY   - at fixed BRT times on the listed weekdays.
+ */
+export const bossRespawnKindEnum = pgEnum('boss_respawn_kind', ['INTERVAL', 'DAILY', 'WEEKLY'])
 
 /** Whether points earned by an ALT are credited to the account or discarded. */
 export const altPointsPolicyEnum = pgEnum('alt_points_policy', ['CREDIT_MAIN', 'NO_CREDIT'])
@@ -175,10 +174,16 @@ export const guildSettings = pgTable('guild_settings', {
    * before this column existed. A guild closes itself deliberately.
    */
   joinPolicy: joinPolicyEnum('join_policy').notNull().default('OPEN'),
+  /** Combat power at which a member counts as Mega (the gold highlight). */
+  megaCpThreshold: integer('mega_cp_threshold').notNull().default(190000),
+  /** Combat power at which a member counts as Titan (the blue highlight). */
+  titanCpThreshold: integer('titan_cp_threshold').notNull().default(155000),
+  /** Weekly participation, in percent, required to bet on loot. */
+  lootMinParticipationPct: integer('loot_min_participation_pct').notNull().default(90),
+  /** Fixed share of every loot wheel reserved for the staff, in percent. */
+  lootStaffSharePct: integer('loot_staff_share_pct').notNull().default(15),
   /** Admin grants above this many points need a second admin to approve. */
   adminGrantApprovalThreshold: integer('admin_grant_approval_threshold').notNull().default(500),
-  /** Seconds an auction is extended when a bid lands near the end (anti-sniping). */
-  auctionAntiSnipeSeconds: integer('auction_anti_snipe_seconds').notNull().default(120),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -238,6 +243,17 @@ export const characters = pgTable(
     biosuit: text('biosuit').notNull(),
     level: integer('level').notNull().default(1),
     kind: characterKindEnum('kind').notNull().default('MAIN'),
+    /** In-game combat power, self-reported. Drives the Mega/Titan tiers. */
+    combatPower: integer('combat_power').notNull().default(0),
+    /** Build checklist shown on the classes board. */
+    skill4: boolean('skill_4').notNull().default(false),
+    skill5: boolean('skill_5').notNull().default(false),
+    skill6: boolean('skill_6').notNull().default(false),
+    skill7: boolean('skill_7').notNull().default(false),
+    constant3: boolean('constant_3').notNull().default(false),
+    painAdaptation: boolean('pain_adaptation').notNull().default(false),
+    trinity: boolean('trinity').notNull().default(false),
+    techniqueMaster: boolean('technique_master').notNull().default(false),
     /** Set on ALTs: the MAIN character of the same account they roll up to. */
     mainCharacterId: uuid('main_character_id'),
     isActive: boolean('is_active').notNull().default(true),
@@ -506,7 +522,7 @@ export const eventRegistrations = pgTable(
  * transitions (PENDING -> CONFIRMED | REVERSED).
  *
  *   pending   = SUM(amount) WHERE state = 'PENDING'
- *   available = SUM(amount) WHERE state = 'CONFIRMED'   (auction holds included,
+ *   available = SUM(amount) WHERE state = 'CONFIRMED'   (loot holds included,
  *                                                        stored as negatives)
  */
 export const pointLedger = pgTable(
@@ -542,108 +558,240 @@ export const pointLedger = pgTable(
 )
 
 // ---------------------------------------------------------------------------
-// Auctions (admin-created, paid in POINTS, main characters only)
+// Weeks & attendance
 // ---------------------------------------------------------------------------
 
-export const auctions = pgTable(
-  'auctions',
+/**
+ * The guild's week counter. Weekly participation is measured from the start
+ * of the newest row; an admin opens the next week by inserting one. Rows are
+ * never edited, so every past week keeps its boundaries.
+ */
+export const guildWeeks = pgTable(
+  'guild_weeks',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     guildId: uuid('guild_id')
       .notNull()
       .references(() => guilds.id, { onDelete: 'cascade' }),
-    itemName: text('item_name').notNull(),
-    description: text('description'),
-    itemType: itemTypeEnum('item_type').notNull().default('OTHER'),
-    rarity: itemRarityEnum('rarity').notNull().default('RARE'),
-    itemLevel: integer('item_level').notNull().default(1),
-    startingBid: integer('starting_bid').notNull(),
-    minIncrement: integer('min_increment').notNull().default(1),
-    currentBid: integer('current_bid'),
-    currentBidderUserId: uuid('current_bidder_user_id'),
-    currentBidderCharacterId: uuid('current_bidder_character_id'),
-    status: auctionStatusEnum('status').notNull().default('DRAFT'),
-    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
-    createdByUserId: uuid('created_by_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    settledAt: timestamp('settled_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    number: integer('number').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    startedByUserId: uuid('started_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
   (t) => [
-    index('auctions_guild_status_idx').on(t.guildId, t.status),
-    index('auctions_ends_at_idx').on(t.endsAt),
+    uniqueIndex('guild_weeks_guild_number_key').on(t.guildId, t.number),
+    index('guild_weeks_guild_started_idx').on(t.guildId, t.startedAt),
   ],
 )
 
-export const auctionBids = pgTable(
-  'auction_bids',
+/**
+ * An excused absence: counts `events_excused` of the week's events as
+ * attended for participation. It never awards points. Revoked logically so
+ * the history of who excused whom survives.
+ */
+export const attendanceExcuses = pgTable(
+  'attendance_excuses',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    auctionId: uuid('auction_id')
+    guildId: uuid('guild_id')
       .notNull()
-      .references(() => auctions.id, { onDelete: 'cascade' }),
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    weekId: uuid('week_id')
+      .notNull()
+      .references(() => guildWeeks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    eventsExcused: integer('events_excused').notNull(),
+    reason: text('reason').notNull(),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedByUserId: uuid('revoked_by_user_id'),
+  },
+  (t) => [index('attendance_excuses_week_user_idx').on(t.weekId, t.userId)],
+)
+
+// ---------------------------------------------------------------------------
+// Loot raffle (paid in POINTS, main characters only)
+// ---------------------------------------------------------------------------
+
+/** A published loot banner. At most one is OPEN per guild. */
+export const lootBanners = pgTable(
+  'loot_banners',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guildId: uuid('guild_id')
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    /** NULL means no deadline: bets stay open until an admin closes the banner. */
+    closesAt: timestamp('closes_at', { withTimezone: true }),
+    status: lootBannerStatusEnum('status').notNull().default('OPEN'),
+    createdByUserId: uuid('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('loot_banners_one_open_per_guild')
+      .on(t.guildId)
+      .where(sql`${t.status} = 'OPEN'`),
+    index('loot_banners_guild_created_idx').on(t.guildId, t.createdAt),
+  ],
+)
+
+export const lootItems = pgTable(
+  'loot_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    bannerId: uuid('banner_id')
+      .notNull()
+      .references(() => lootBanners.id, { onDelete: 'cascade' }),
+    guildId: uuid('guild_id')
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** The most points a single bet on this item may carry. */
+    maxPoints: integer('max_points').notNull(),
+    restriction: lootRestrictionEnum('restriction').notNull().default('ALL'),
+    status: lootItemStatusEnum('status').notNull().default('OPEN'),
+    /** Set when a member won. NULL with a staff name means the staff slice won. */
+    winnerUserId: uuid('winner_user_id').references(() => users.id, { onDelete: 'set null' }),
+    winnerCharacterId: uuid('winner_character_id').references(() => characters.id, {
+      onDelete: 'set null',
+    }),
+    /** Frozen at draw time so a later rename does not rewrite history. */
+    winnerName: text('winner_name'),
+    /** Character name of the staff member the staff slice belonged to. */
+    staffName: text('staff_name'),
+    /** Points the winner paid: the held amount of the winning bet. */
+    pointsPaid: integer('points_paid').notNull().default(0),
+    /** The wheel as it was drawn, so every viewer replays the same one. */
+    drawSlices: jsonb('draw_slices'),
+    drawnAt: timestamp('drawn_at', { withTimezone: true }),
+    drawnByUserId: uuid('drawn_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('loot_items_banner_idx').on(t.bannerId),
+    index('loot_items_guild_drawn_idx').on(t.guildId, t.drawnAt),
+  ],
+)
+
+export const lootBets = pgTable(
+  'loot_bets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => lootItems.id, { onDelete: 'cascade' }),
+    guildId: uuid('guild_id')
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     characterId: uuid('character_id')
       .notNull()
       .references(() => characters.id, { onDelete: 'restrict' }),
-    amount: integer('amount').notNull(),
-    /** The AUCTION_HOLD ledger row this bid locked, released when outbid. */
-    holdLedgerId: uuid('hold_ledger_id'),
-    isWinning: boolean('is_winning').notNull().default(false),
+    points: integer('points').notNull(),
+    /** The LOOT_HOLD ledger row that locked these points. */
+    holdLedgerId: uuid('hold_ledger_id').notNull(),
+    status: lootBetStatusEnum('status').notNull().default('ACTIVE'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
   },
   (t) => [
-    index('auction_bids_auction_idx').on(t.auctionId, t.amount),
-    index('auction_bids_user_idx').on(t.userId),
+    // One live bet per account per item: a second one would be a way to
+    // weight the wheel past the per-bet cap.
+    uniqueIndex('loot_bets_one_active_per_user')
+      .on(t.itemId, t.userId)
+      .where(sql`${t.status} = 'ACTIVE'`),
+    index('loot_bets_item_idx').on(t.itemId),
+    index('loot_bets_user_idx').on(t.userId),
   ],
 )
 
 // ---------------------------------------------------------------------------
-// Guild store (player-listed items, priced in DIAMONDS)
+// Meme raffle (no points involved)
 // ---------------------------------------------------------------------------
 
-/**
- * Player-to-player classifieds. Priced in diamonds (the in-game currency),
- * deliberately separate from the event point economy: points are earned in the
- * portal and only spendable in admin auctions, diamonds are traded in game.
- */
-export const marketListings = pgTable(
-  'market_listings',
+export const memeDraws = pgTable(
+  'meme_draws',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     guildId: uuid('guild_id')
       .notNull()
       .references(() => guilds.id, { onDelete: 'cascade' }),
-    sellerUserId: uuid('seller_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    sellerCharacterId: uuid('seller_character_id')
-      .notNull()
-      .references(() => characters.id, { onDelete: 'restrict' }),
     itemName: text('item_name').notNull(),
-    itemType: itemTypeEnum('item_type').notNull().default('OTHER'),
-    rarity: itemRarityEnum('rarity').notNull().default('COMMON'),
-    itemLevel: integer('item_level').notNull().default(1),
-    /** Price in diamonds. */
-    priceDiamonds: integer('price_diamonds').notNull(),
-    quantity: integer('quantity').notNull().default(1),
-    notes: text('notes'),
-    status: listingStatusEnum('status').notNull().default('ACTIVE'),
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
-    soldAt: timestamp('sold_at', { withTimezone: true }),
-    soldToCharacterId: uuid('sold_to_character_id'),
+    winnerCharacterId: uuid('winner_character_id').references(() => characters.id, {
+      onDelete: 'set null',
+    }),
+    /** Frozen at draw time so a later rename does not rewrite history. */
+    winnerName: text('winner_name').notNull(),
+    candidateCount: integer('candidate_count').notNull(),
+    note: text('note'),
+    drawnByUserId: uuid('drawn_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    index('market_listings_guild_status_idx').on(t.guildId, t.status),
-    index('market_listings_seller_idx').on(t.sellerUserId),
-    index('market_listings_expires_idx').on(t.expiresAt),
-  ],
+  (t) => [index('meme_draws_guild_created_idx').on(t.guildId, t.createdAt)],
+)
+
+// ---------------------------------------------------------------------------
+// Boss schedule
+// ---------------------------------------------------------------------------
+
+/**
+ * A respawn schedule shared by several bosses. A boss with a group follows
+ * the group's schedule; one without carries its own.
+ */
+export const bossGroups = pgTable(
+  'boss_groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guildId: uuid('guild_id')
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    respawnKind: bossRespawnKindEnum('respawn_kind').notNull(),
+    intervalHours: integer('interval_hours'),
+    anchorAt: timestamp('anchor_at', { withTimezone: true }),
+    /** Comma-separated BRT times, e.g. "16:00, 22:30". */
+    dailyTimes: text('daily_times'),
+    /** Comma-separated weekdays, 0 = Sunday. */
+    weekdays: text('weekdays'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('boss_groups_guild_idx').on(t.guildId)],
+)
+
+export const bosses = pgTable(
+  'bosses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guildId: uuid('guild_id')
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    groupId: uuid('group_id').references(() => bossGroups.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    location: text('location').notNull(),
+    /** Own schedule, used only when the boss has no group. */
+    respawnKind: bossRespawnKindEnum('respawn_kind'),
+    intervalHours: integer('interval_hours'),
+    anchorAt: timestamp('anchor_at', { withTimezone: true }),
+    dailyTimes: text('daily_times'),
+    weekdays: text('weekdays'),
+    /** Part of this week's rotation: shown on the schedule. */
+    inRotation: boolean('in_rotation').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('bosses_guild_idx').on(t.guildId), index('bosses_group_idx').on(t.groupId)],
 )
 
 // ---------------------------------------------------------------------------
@@ -690,7 +838,6 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   registrations: many(eventRegistrations),
   ledger: many(pointLedger),
   restrictions: many(userRestrictions),
-  listings: many(marketListings),
 }))
 
 export const charactersRelations = relations(characters, ({ one, many }) => ({
@@ -720,25 +867,6 @@ export const pointLedgerRelations = relations(pointLedger, ({ one }) => ({
   event: one(events, { fields: [pointLedger.eventId], references: [events.id] }),
 }))
 
-export const auctionsRelations = relations(auctions, ({ many, one }) => ({
-  guild: one(guilds, { fields: [auctions.guildId], references: [guilds.id] }),
-  bids: many(auctionBids),
-}))
-
-export const auctionBidsRelations = relations(auctionBids, ({ one }) => ({
-  auction: one(auctions, { fields: [auctionBids.auctionId], references: [auctions.id] }),
-  user: one(users, { fields: [auctionBids.userId], references: [users.id] }),
-}))
-
-export const marketListingsRelations = relations(marketListings, ({ one }) => ({
-  guild: one(guilds, { fields: [marketListings.guildId], references: [guilds.id] }),
-  seller: one(users, { fields: [marketListings.sellerUserId], references: [users.id] }),
-  sellerCharacter: one(characters, {
-    fields: [marketListings.sellerCharacterId],
-    references: [characters.id],
-  }),
-}))
-
 // ---------------------------------------------------------------------------
 // Inferred types
 // ---------------------------------------------------------------------------
@@ -751,9 +879,16 @@ export type UserRestriction = typeof userRestrictions.$inferSelect
 export type GuildEvent = typeof events.$inferSelect
 export type EventRegistration = typeof eventRegistrations.$inferSelect
 export type PointLedgerEntry = typeof pointLedger.$inferSelect
-export type Auction = typeof auctions.$inferSelect
-export type AuctionBid = typeof auctionBids.$inferSelect
-export type MarketListing = typeof marketListings.$inferSelect
+export type GuildWeek = typeof guildWeeks.$inferSelect
+export type AttendanceExcuse = typeof attendanceExcuses.$inferSelect
+export type LootBanner = typeof lootBanners.$inferSelect
+export type LootItem = typeof lootItems.$inferSelect
+export type LootBet = typeof lootBets.$inferSelect
+export type MemeDraw = typeof memeDraws.$inferSelect
+export type BossGroup = typeof bossGroups.$inferSelect
+export type Boss = typeof bosses.$inferSelect
+export type LootRestriction = (typeof lootRestrictionEnum.enumValues)[number]
+export type BossRespawnKind = (typeof bossRespawnKindEnum.enumValues)[number]
 export type AuditLogEntry = typeof auditLog.$inferSelect
 export type GuildInvite = typeof guildInvites.$inferSelect
 export type MemberInvite = typeof memberInvites.$inferSelect
@@ -764,5 +899,3 @@ export type UserStatus = (typeof userStatusEnum.enumValues)[number]
 export type Race = (typeof raceEnum.enumValues)[number]
 export type CharacterKind = (typeof characterKindEnum.enumValues)[number]
 export type RestrictionType = (typeof restrictionTypeEnum.enumValues)[number]
-export type ItemRarity = (typeof itemRarityEnum.enumValues)[number]
-export type ItemType = (typeof itemTypeEnum.enumValues)[number]

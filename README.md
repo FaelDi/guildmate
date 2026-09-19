@@ -1,8 +1,10 @@
 # GuildMate
 
-A guild portal for RF Next players: guild and character registry, live events scored with a
-time-limited join code, an append-only point ledger, admin point auctions, and a player item
-store priced in diamonds.
+A guild command center for RF Next players: a weekly ranking with participation and
+penalties, the classes & builds board, a loot raffle paid in points, a meme raffle and the
+boss schedule — on top of live events scored with a time-limited join code and an
+append-only point ledger. Every member has their own login; the interface is Portuguese,
+with a Google Translate selector for other languages.
 
 The whole design answers one requirement: **it must be hard to mint points fraudulently.**
 
@@ -14,9 +16,15 @@ The whole design answers one requirement: **it must be hard to mint points fraud
   lifetime. Players redeem the code to register and earn points.
 - **Points** are PENDING until the event reaches its minimum participants. If fewer than
   three register within 48 hours the event is cancelled and every point is reversed.
-- **Auctions** are admin-created and paid with confirmed points. Only a MAIN character bids.
-- **The store** is member-listed gear priced in diamonds, deliberately outside the point
-  economy.
+- **Weekly participation** comes from the week's events plus admin-excused absences.
+  Admins can penalize (and reverse a penalty once).
+- **Classes & builds**: each character carries its combat power and build checklist; the
+  Mega and Titan rulers highlight the strongest. Members edit only their own characters;
+  admins edit anyone's.
+- **Loot raffle**: admins publish a banner, members bet confirmed points with their MAIN
+  (90% weekly participation required). Staff hold a fixed 15% slice, the rest is split by
+  points, and only the winner pays. The server draws; everyone watches the same wheel.
+- **Meme raffle** (no points) and the **boss schedule** in BRT with live countdowns.
 - **Moderation**: logical deactivation, timed or permanent restrictions, and permanent
   access revocation — all mirrored into Supabase Auth.
 
@@ -32,6 +40,7 @@ npm install
 cp .env.example .env.local     # fill in the Supabase values
 npm run db:migrate             # apply the schema (uses DIRECT_URL)
 npm run db:seed                # biosuit catalogue
+npm run db:seed:mock -- <slug> # optional: fictional members and activity for a guild
 npm run dev
 ```
 

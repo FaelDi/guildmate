@@ -10,8 +10,6 @@
 
 import type {
   CharacterKind,
-  ItemRarity,
-  ItemType,
   Race,
   RestrictionType,
   UserRole,
@@ -326,7 +324,10 @@ export type SettingsLike = {
   minLevelToRegister: number
   altPointsPolicy: 'CREDIT_MAIN' | 'NO_CREDIT'
   adminGrantApprovalThreshold: number
-  auctionAntiSnipeSeconds: number
+  megaCpThreshold: number
+  titanCpThreshold: number
+  lootMinParticipationPct: number
+  lootStaffSharePct: number
 }
 
 export type RegistrationGrant = {
@@ -615,169 +616,6 @@ export function resolveConfirmationDeadline(settings: SettingsLike, now: Date): 
 }
 
 // ---------------------------------------------------------------------------
-// Auctions (points)
-// ---------------------------------------------------------------------------
-
-export type AuctionLike = {
-  id: string
-  guildId: string
-  status: 'DRAFT' | 'OPEN' | 'CLOSED' | 'SETTLED' | 'CANCELLED'
-  startingBid: number
-  minIncrement: number
-  currentBid: number | null
-  currentBidderUserId: string | null
-  endsAt: Date
-}
-
-/** The smallest bid that would currently win. */
-export function minimumBid(auction: Pick<AuctionLike, 'startingBid' | 'minIncrement' | 'currentBid'>): number {
-  return auction.currentBid === null ? auction.startingBid : auction.currentBid + auction.minIncrement
-}
-
-export function evaluateBid(params: {
-  auction: AuctionLike
-  actor: Actor
-  character: CharacterLike
-  restrictions: readonly RestrictionLike[]
-  /** Spendable points, holds already deducted. */
-  availablePoints: number
-  amount: number
-  now: Date
-}): RuleResult<{ amount: number }> {
-  const { auction, actor, character, restrictions, availablePoints, amount, now } = params
-
-  const access = evaluateAccountAccess(
-    { status: actor.status, isActive: actor.isActive, deletedAt: null },
-    restrictions,
-    now,
-  )
-  if (!access.ok) return access
-  if (activeRestrictionTypes(restrictions, now).has('NO_AUCTION')) {
-    return deny('RESTRICTED', 'You are currently barred from bidding')
-  }
-
-  if (character.userId !== actor.id || character.guildId !== auction.guildId) {
-    return deny('FORBIDDEN', 'You are not allowed to access this resource')
-  }
-  // "Only main characters may spend points in auctions."
-  if (character.kind !== 'MAIN') {
-    return deny('MAIN_CHARACTER_REQUIRED', 'Only a main character can bid in auctions')
-  }
-  if (!character.isActive) {
-    return deny('CHARACTER_INACTIVE', 'This character is inactive')
-  }
-
-  if (auction.status !== 'OPEN') return deny('AUCTION_CLOSED', 'This auction is not open')
-  if (now.getTime() >= auction.endsAt.getTime()) {
-    return deny('AUCTION_ENDED', 'This auction has ended')
-  }
-  if (auction.currentBidderUserId === actor.id) {
-    return deny('ALREADY_WINNING', 'You are already the highest bidder')
-  }
-
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return deny('INVALID_AMOUNT', 'The bid must be a positive whole number of points')
-  }
-  const floor = minimumBid(auction)
-  if (amount < floor) {
-    return deny('BID_TOO_LOW', `The minimum bid is ${floor} points`)
-  }
-  // Only CONFIRMED points can be spent, so a bid can never be funded by an
-  // event that is still one registration away from being cancelled.
-  if (amount > availablePoints) {
-    return deny('INSUFFICIENT_POINTS', 'You do not have enough confirmed points for this bid')
-  }
-
-  return allow({ amount })
-}
-
-/**
- * Anti-sniping: a bid placed inside the closing window pushes the end forward,
- * so an auction cannot be stolen in the last second.
- */
-export function applyAntiSnipe(endsAt: Date, now: Date, antiSnipeSeconds: number): Date {
-  if (antiSnipeSeconds <= 0) return endsAt
-  const threshold = now.getTime() + antiSnipeSeconds * 1000
-  return threshold > endsAt.getTime() ? new Date(threshold) : endsAt
-}
-
-// ---------------------------------------------------------------------------
-// Guild store (diamonds)
-// ---------------------------------------------------------------------------
-
-export type ListingInput = {
-  itemName: string
-  itemType: ItemType
-  rarity: ItemRarity
-  itemLevel: number
-  priceDiamonds: number
-  quantity: number
-}
-
-/**
- * May this account touch the store at all?
- *
- * Split out because `NO_MARKET` used to be checked only when a listing was
- * created: a member barred from the store could still rewrite the price and
- * the description of everything they had already posted, which is most of what
- * the restriction is meant to stop.
- */
-export function evaluateMarketAccess(params: {
-  actor: Actor
-  restrictions: readonly RestrictionLike[]
-  now: Date
-}): RuleResult<undefined> {
-  const { actor, restrictions, now } = params
-
-  const access = evaluateAccountAccess(
-    { status: actor.status, isActive: actor.isActive, deletedAt: null },
-    restrictions,
-    now,
-  )
-  if (!access.ok) return access
-
-  if (activeRestrictionTypes(restrictions, now).has('NO_MARKET')) {
-    return deny('RESTRICTED', 'You are currently barred from the guild store')
-  }
-  return allow(undefined)
-}
-
-export function evaluateListingCreate(params: {
-  actor: Actor
-  character: CharacterLike
-  restrictions: readonly RestrictionLike[]
-  input: ListingInput
-  now: Date
-}): RuleResult<ListingInput> {
-  const { actor, character, restrictions, input, now } = params
-
-  const access = evaluateMarketAccess({ actor, restrictions, now })
-  if (!access.ok) return access
-
-  // A member lists items owned by their own characters, never someone else's.
-  if (character.userId !== actor.id || character.guildId !== actor.guildId) {
-    return deny('FORBIDDEN', 'You are not allowed to access this resource')
-  }
-  if (!character.isActive) return deny('CHARACTER_INACTIVE', 'This character is inactive')
-
-  const name = input.itemName.trim()
-  if (name.length < 2 || name.length > 120) {
-    return deny('INVALID_NAME', 'The item name must be between 2 and 120 characters')
-  }
-  if (!Number.isInteger(input.priceDiamonds) || input.priceDiamonds < 1) {
-    return deny('INVALID_PRICE', 'The price must be at least 1 diamond')
-  }
-  if (!Number.isInteger(input.itemLevel) || input.itemLevel < 1 || input.itemLevel > 999) {
-    return deny('INVALID_LEVEL', 'The item level must be between 1 and 999')
-  }
-  if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 9999) {
-    return deny('INVALID_QUANTITY', 'The quantity must be between 1 and 9999')
-  }
-
-  return allow({ ...input, itemName: name })
-}
-
-// ---------------------------------------------------------------------------
 // Guild invites
 // ---------------------------------------------------------------------------
 
@@ -986,12 +824,33 @@ export type CharacterDraft = {
   kind: CharacterKind
 }
 
-/** The fields a member may edit after a character exists. */
+/** The name, class and level every character carries. */
 export type CharacterPatch = {
   name: string
   biosuit: string
   level: number
 }
+
+/** The build checklist on the classes board. */
+export type BuildFlags = {
+  skill4: boolean
+  skill5: boolean
+  skill6: boolean
+  skill7: boolean
+  constant3: boolean
+  painAdaptation: boolean
+  trinity: boolean
+  techniqueMaster: boolean
+}
+
+/** Everything an edit of an existing character may change. */
+export type CharacterStatsPatch = CharacterPatch & {
+  combatPower: number
+  build: BuildFlags
+}
+
+/** Above any real RF Next combat power, low enough to stay inside an int4. */
+export const MAX_COMBAT_POWER = 100_000_000
 
 export type CharacterCreatePlan = {
   character: CharacterDraft
@@ -1112,19 +971,28 @@ export function evaluateCharacterCreate(params: {
 }
 
 /**
- * Editing a character.
+ * Editing a character: level, combat power, class and build.
  *
- * `kind` is deliberately not patchable: which character is the MAIN decides
- * where points are attributed and who may bid, so it moves only through
- * `evaluateMainSwitch`, which relinks the whole roster in one audited step.
+ * The owner edits their own characters; an admin of the same guild edits
+ * anybody's, because keeping the board accurate is their job. Only an admin
+ * may rename: the name is the guild-wide identity other members recognise, so
+ * a member quietly taking a respected player's name is not self-service.
+ *
+ * `kind` is deliberately not patchable by anyone: which character is the MAIN
+ * decides where points are attributed and who may bet, so it moves only
+ * through `evaluateMainSwitch`, which relinks the whole roster in one audited
+ * step and is owner-only.
+ *
+ * None of these fields touch the ledger. Combat power does gate which loot
+ * tiers a member may bet on, which is why an admin can correct it.
  */
-export function evaluateCharacterUpdate(params: {
+export function evaluateCharacterStatsUpdate(params: {
   actor: Actor
   restrictions: readonly RestrictionLike[]
-  character: CharacterLike
-  input: CharacterPatch
+  character: CharacterLike & { name: string }
+  input: CharacterStatsPatch
   now: Date
-}): RuleResult<CharacterPatch> {
+}): RuleResult<CharacterStatsPatch & { viaAdmin: boolean }> {
   const { actor, restrictions, character, input, now } = params
 
   const access = evaluateAccountAccess(
@@ -1134,14 +1002,49 @@ export function evaluateCharacterUpdate(params: {
   )
   if (!access.ok) return access
 
-  if (character.userId !== actor.id || character.guildId !== actor.guildId) {
-    return deny('FORBIDDEN', 'You are not allowed to access this resource')
-  }
+  const ownership = authorizeResource({
+    actor,
+    ownerUserId: character.userId,
+    resourceGuildId: character.guildId,
+  })
+  if (!ownership.ok) return ownership
+  const { viaAdmin } = ownership.value
+  const isAdmin = isGuildAdmin(actor.role)
+
   if (!character.isActive) {
     return deny('CHARACTER_INACTIVE', 'This character is retired')
   }
 
-  return validateCharacterFields(input)
+  const fields = validateCharacterFields(input)
+  if (!fields.ok) return fields
+
+  if (!isAdmin && fields.value.name !== character.name) {
+    return deny('NAME_CHANGE_ADMIN_ONLY', 'Only an admin can rename a character')
+  }
+
+  if (
+    !Number.isInteger(input.combatPower) ||
+    input.combatPower < 0 ||
+    input.combatPower > MAX_COMBAT_POWER
+  ) {
+    return deny('INVALID_COMBAT_POWER', 'Combat power must be a whole number of zero or more')
+  }
+
+  return allow({
+    ...fields.value,
+    combatPower: input.combatPower,
+    build: {
+      skill4: input.build.skill4 === true,
+      skill5: input.build.skill5 === true,
+      skill6: input.build.skill6 === true,
+      skill7: input.build.skill7 === true,
+      constant3: input.build.constant3 === true,
+      painAdaptation: input.build.painAdaptation === true,
+      trinity: input.build.trinity === true,
+      techniqueMaster: input.build.techniqueMaster === true,
+    },
+    viaAdmin,
+  })
 }
 
 /**
@@ -1235,4 +1138,784 @@ export function evaluateCharacterRetire(params: {
   }
 
   return allow({ characterId: target.id })
+}
+
+// ---------------------------------------------------------------------------
+// Weeks & participation
+// ---------------------------------------------------------------------------
+
+/**
+ * Weekly participation, in percent with one decimal.
+ *
+ * `eventsHeld` counts the week's events the member could have joined - the
+ * ones they created are excluded by the caller, since a creator can never
+ * redeem their own code. An excused absence counts as attended, never as
+ * points. A week with no events yet is 100%: nobody has missed anything.
+ */
+export function computeParticipation(params: {
+  eventsHeld: number
+  eventsAttended: number
+  eventsExcused: number
+}): number {
+  const held = Math.max(0, Math.floor(params.eventsHeld))
+  if (held === 0) return 100
+
+  const credited = Math.max(0, params.eventsAttended) + Math.max(0, params.eventsExcused)
+  const pct = Math.min(100, (credited / held) * 100)
+  return Math.round(pct * 10) / 10
+}
+
+/** The shortest week an admin may close: stops a double click burning a week. */
+export const MIN_WEEK_HOURS = 1
+
+/**
+ * Opening the next week. Participation restarts from zero for everybody, which
+ * is also what unlocks or locks loot betting, so it is an admin power.
+ */
+export function evaluateWeekAdvance(params: {
+  actor: Actor
+  guildId: string
+  currentWeek: { number: number; startedAt: Date } | null
+  now: Date
+}): RuleResult<{ number: number }> {
+  const { actor, guildId, currentWeek, now } = params
+
+  const adminCheck = authorizeAdminAction(actor, guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (!currentWeek) return allow({ number: 1 })
+
+  if (now.getTime() - currentWeek.startedAt.getTime() < MIN_WEEK_HOURS * 3_600_000) {
+    return deny('WEEK_TOO_RECENT', 'The current week has just started')
+  }
+  return allow({ number: currentWeek.number + 1 })
+}
+
+const MAX_REASON_LENGTH = 200
+
+function validateReason(reason: string): RuleResult<string> {
+  const trimmed = reason.trim()
+  if (trimmed.length < 3 || trimmed.length > MAX_REASON_LENGTH) {
+    return deny('REASON_REQUIRED', `A reason between 3 and ${MAX_REASON_LENGTH} characters is required`)
+  }
+  if (CONTROL_CHARACTERS.test(trimmed)) {
+    return deny('REASON_REQUIRED', 'The reason contains characters that are not allowed')
+  }
+  return allow(trimmed)
+}
+
+export const MAX_EVENTS_EXCUSED = 50
+
+/**
+ * Excusing an absence. It raises participation, which is the gate to loot
+ * betting - so an admin excusing themselves would be opening their own gate.
+ * Refused on the account, like every other self-benefit.
+ */
+export function evaluateExcuse(params: {
+  actor: Actor
+  target: { id: string; guildId: string }
+  eventsExcused: number
+  reason: string
+}): RuleResult<{ eventsExcused: number; reason: string }> {
+  const { actor, target, eventsExcused } = params
+
+  const adminCheck = authorizeAdminAction(actor, target.guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (target.id === actor.id) {
+    return deny('SELF_EXCUSE_FORBIDDEN', 'An admin cannot excuse their own absence')
+  }
+  if (!Number.isInteger(eventsExcused) || eventsExcused < 1 || eventsExcused > MAX_EVENTS_EXCUSED) {
+    return deny('INVALID_AMOUNT', `Between 1 and ${MAX_EVENTS_EXCUSED} events can be excused`)
+  }
+
+  const reason = validateReason(params.reason)
+  if (!reason.ok) return reason
+
+  return allow({ eventsExcused, reason: reason.value })
+}
+
+// ---------------------------------------------------------------------------
+// Penalties
+// ---------------------------------------------------------------------------
+
+export const MAX_PENALTY_POINTS = 100_000
+
+/**
+ * A penalty is a negative, immediately CONFIRMED ledger row. Deducting never
+ * mints, but an admin is still kept off their own account: a penalty is the
+ * first half of a reversal, and the reversal is a credit.
+ */
+export function evaluatePenalty(params: {
+  actor: Actor
+  target: { id: string; guildId: string }
+  points: number
+  reason: string
+}): RuleResult<{ amount: number; reason: string }> {
+  const { actor, target, points } = params
+
+  const adminCheck = authorizeAdminAction(actor, target.guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (target.id === actor.id) {
+    return deny('SELF_PENALTY_FORBIDDEN', 'An admin cannot penalize their own account')
+  }
+  if (!Number.isInteger(points) || points < 1 || points > MAX_PENALTY_POINTS) {
+    return deny('INVALID_AMOUNT', `A penalty must be between 1 and ${MAX_PENALTY_POINTS} points`)
+  }
+
+  const reason = validateReason(params.reason)
+  if (!reason.ok) return reason
+
+  return allow({ amount: -points, reason: reason.value })
+}
+
+/**
+ * Undoing a penalty credits exactly what it took, exactly once, and never to
+ * the admin doing it - otherwise "penalize, then reverse twice" would mint.
+ */
+export function evaluatePenaltyReversal(params: {
+  actor: Actor
+  penalty: { userId: string; guildId: string; kind: string; amount: number; state: string }
+  alreadyReversed: boolean
+}): RuleResult<{ amount: number }> {
+  const { actor, penalty, alreadyReversed } = params
+
+  const adminCheck = authorizeAdminAction(actor, penalty.guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (penalty.kind !== 'PENALTY' || penalty.amount >= 0 || penalty.state !== 'CONFIRMED') {
+    return deny('NOT_FOUND', 'Penalty not found')
+  }
+  if (penalty.userId === actor.id) {
+    return deny('SELF_PENALTY_FORBIDDEN', 'An admin cannot reverse a penalty on their own account')
+  }
+  if (alreadyReversed) {
+    return deny('ALREADY_REVERSED', 'This penalty was already reversed')
+  }
+  return allow({ amount: -penalty.amount })
+}
+
+// ---------------------------------------------------------------------------
+// Combat power tiers
+// ---------------------------------------------------------------------------
+
+export type CpTier = 'MEGA' | 'TITAN' | 'NONE'
+export type LootRestrictionLike = 'ALL' | 'TITAN' | 'MEGA'
+
+/** A threshold of 0 switches that tier off. */
+export function classifyCombatPower(
+  combatPower: number,
+  thresholds: Pick<SettingsLike, 'megaCpThreshold' | 'titanCpThreshold'>,
+): CpTier {
+  if (thresholds.megaCpThreshold > 0 && combatPower >= thresholds.megaCpThreshold) return 'MEGA'
+  if (thresholds.titanCpThreshold > 0 && combatPower >= thresholds.titanCpThreshold) return 'TITAN'
+  return 'NONE'
+}
+
+/** TITAN items take Titans and Megas; MEGA items take Megas only. */
+export function meetsLootRestriction(tier: CpTier, restriction: LootRestrictionLike): boolean {
+  if (restriction === 'ALL') return true
+  if (restriction === 'TITAN') return tier === 'TITAN' || tier === 'MEGA'
+  return tier === 'MEGA'
+}
+
+export function evaluateThresholdUpdate(params: {
+  actor: Actor
+  guildId: string
+  megaCpThreshold: number
+  titanCpThreshold: number
+}): RuleResult<{ megaCpThreshold: number; titanCpThreshold: number }> {
+  const { actor, guildId, megaCpThreshold, titanCpThreshold } = params
+
+  const adminCheck = authorizeAdminAction(actor, guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  for (const value of [megaCpThreshold, titanCpThreshold]) {
+    if (!Number.isInteger(value) || value < 0 || value > MAX_COMBAT_POWER) {
+      return deny('INVALID_THRESHOLD', 'A threshold must be a whole number of zero or more')
+    }
+  }
+  if (megaCpThreshold > 0 && titanCpThreshold > 0 && titanCpThreshold > megaCpThreshold) {
+    return deny('INVALID_THRESHOLD', 'The Titan threshold cannot be above the Mega threshold')
+  }
+  return allow({ megaCpThreshold, titanCpThreshold })
+}
+
+// ---------------------------------------------------------------------------
+// Loot raffle
+// ---------------------------------------------------------------------------
+
+export const LOOT_MAX_ITEMS_PER_BANNER = 20
+export const LOOT_MAX_BANNER_HOURS = 720
+export const LOOT_MAX_ITEM_POINTS = 1_000_000
+
+export type LootItemDraft = {
+  name: string
+  maxPoints: number
+  restriction: LootRestrictionLike
+}
+
+export type LootBannerLike = {
+  id: string
+  guildId: string
+  status: 'OPEN' | 'CLOSED'
+  closesAt: Date | null
+}
+
+export type LootItemLike = {
+  id: string
+  guildId: string
+  bannerId: string
+  status: 'OPEN' | 'DRAWN' | 'CANCELLED'
+  maxPoints: number
+  restriction: LootRestrictionLike
+}
+
+/** Bets are taken while the banner is open and its deadline, if any, is ahead. */
+export function isBannerAcceptingBets(banner: LootBannerLike, now: Date): boolean {
+  if (banner.status !== 'OPEN') return false
+  return banner.closesAt === null || now.getTime() < banner.closesAt.getTime()
+}
+
+function validateItemName(name: string): RuleResult<string> {
+  const trimmed = name.trim()
+  if (trimmed.length < 2 || trimmed.length > 120 || CONTROL_CHARACTERS.test(trimmed)) {
+    return deny('INVALID_ITEM_NAME', 'The item name must be between 2 and 120 characters')
+  }
+  return allow(trimmed)
+}
+
+/**
+ * Publishing a banner. One open banner per guild, so the wheel members are
+ * betting on is never ambiguous.
+ */
+export function evaluateLootBannerCreate(params: {
+  actor: Actor
+  guildId: string
+  title: string
+  durationHours: number | null
+  items: readonly LootItemDraft[]
+  hasOpenBanner: boolean
+  now: Date
+}): RuleResult<{ title: string; closesAt: Date | null; items: LootItemDraft[] }> {
+  const { actor, guildId, durationHours, items, hasOpenBanner, now } = params
+
+  const adminCheck = authorizeAdminAction(actor, guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (hasOpenBanner) {
+    return deny('BANNER_ALREADY_OPEN', 'Close the current loot banner before publishing another')
+  }
+
+  const title = params.title.trim()
+  if (title.length < 2 || title.length > 120 || CONTROL_CHARACTERS.test(title)) {
+    return deny('INVALID_TITLE', 'The title must be between 2 and 120 characters')
+  }
+
+  if (
+    durationHours !== null &&
+    (!Number.isInteger(durationHours) || durationHours < 1 || durationHours > LOOT_MAX_BANNER_HOURS)
+  ) {
+    return deny('INVALID_TTL', `The deadline must be between 1 and ${LOOT_MAX_BANNER_HOURS} hours`)
+  }
+
+  if (items.length < 1 || items.length > LOOT_MAX_ITEMS_PER_BANNER) {
+    return deny('INVALID_ITEMS', `A banner holds between 1 and ${LOOT_MAX_ITEMS_PER_BANNER} items`)
+  }
+
+  const cleaned: LootItemDraft[] = []
+  for (const item of items) {
+    const name = validateItemName(item.name)
+    if (!name.ok) return name
+    if (
+      !Number.isInteger(item.maxPoints) ||
+      item.maxPoints < 1 ||
+      item.maxPoints > LOOT_MAX_ITEM_POINTS
+    ) {
+      return deny('INVALID_AMOUNT', `An item cap must be between 1 and ${LOOT_MAX_ITEM_POINTS} points`)
+    }
+    cleaned.push({ name: name.value, maxPoints: item.maxPoints, restriction: item.restriction })
+  }
+
+  return allow({
+    title,
+    closesAt: durationHours === null ? null : new Date(now.getTime() + durationHours * 3_600_000),
+    items: cleaned,
+  })
+}
+
+/** Extending a deadline. Counted from the later of the deadline and now. */
+export function evaluateBannerExtend(params: {
+  actor: Actor
+  banner: LootBannerLike
+  hours: number
+  now: Date
+}): RuleResult<{ closesAt: Date }> {
+  const { actor, banner, hours, now } = params
+
+  const adminCheck = authorizeAdminAction(actor, banner.guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (banner.status !== 'OPEN') return deny('LOOT_CLOSED', 'This loot banner is closed')
+  if (banner.closesAt === null) {
+    return deny('NO_DEADLINE', 'This banner has no deadline to extend')
+  }
+  if (!Number.isInteger(hours) || hours < 1 || hours > 168) {
+    return deny('INVALID_TTL', 'An extension must be between 1 and 168 hours')
+  }
+
+  const base = Math.max(banner.closesAt.getTime(), now.getTime())
+  return allow({ closesAt: new Date(base + hours * 3_600_000) })
+}
+
+/**
+ * Placing a bet.
+ *
+ * The points are held (a CONFIRMED negative row) the moment the bet lands, so
+ * the same points can never back two bets. Only a loser gets them back: the
+ * winner's hold becomes the price.
+ */
+export function evaluateLootBet(params: {
+  actor: Actor
+  restrictions: readonly RestrictionLike[]
+  character: CharacterLike & { combatPower: number }
+  banner: LootBannerLike
+  item: LootItemLike
+  participationPct: number
+  settings: Pick<SettingsLike, 'megaCpThreshold' | 'titanCpThreshold' | 'lootMinParticipationPct'>
+  /** Spendable points, holds already deducted. */
+  availablePoints: number
+  hasActiveBet: boolean
+  points: number
+  now: Date
+}): RuleResult<{ points: number }> {
+  const {
+    actor,
+    restrictions,
+    character,
+    banner,
+    item,
+    participationPct,
+    settings,
+    availablePoints,
+    hasActiveBet,
+    points,
+    now,
+  } = params
+
+  const access = evaluateAccountAccess(
+    { status: actor.status, isActive: actor.isActive, deletedAt: null },
+    restrictions,
+    now,
+  )
+  if (!access.ok) return access
+  if (activeRestrictionTypes(restrictions, now).has('NO_LOOT')) {
+    return deny('RESTRICTED', 'You are currently barred from loot bets')
+  }
+
+  if (character.userId !== actor.id || character.guildId !== actor.guildId) {
+    return deny('FORBIDDEN', 'You are not allowed to access this resource')
+  }
+  if (
+    item.guildId !== actor.guildId ||
+    banner.guildId !== actor.guildId ||
+    item.bannerId !== banner.id
+  ) {
+    return deny('FORBIDDEN', 'You are not allowed to access this resource')
+  }
+  // Points belong to the account and are spent by its MAIN, as the ranking
+  // shows them. An ALT betting would be the same account under another name.
+  if (character.kind !== 'MAIN') {
+    return deny('MAIN_CHARACTER_REQUIRED', 'Only a main character can bet on loot')
+  }
+  if (!character.isActive) return deny('CHARACTER_INACTIVE', 'This character is inactive')
+
+  if (!isBannerAcceptingBets(banner, now)) {
+    return deny('LOOT_CLOSED', 'This loot banner is no longer taking bets')
+  }
+  if (item.status !== 'OPEN') return deny('ITEM_NOT_OPEN', 'This item was already drawn')
+
+  if (participationPct < settings.lootMinParticipationPct) {
+    return deny(
+      'PARTICIPATION_TOO_LOW',
+      `At least ${settings.lootMinParticipationPct}% weekly participation is required to bet`,
+    )
+  }
+
+  const tier = classifyCombatPower(character.combatPower, settings)
+  if (!meetsLootRestriction(tier, item.restriction)) {
+    return deny(
+      'TIER_REQUIRED',
+      item.restriction === 'MEGA'
+        ? 'Only Mega members can bet on this item'
+        : 'Only Titan or Mega members can bet on this item',
+    )
+  }
+
+  if (hasActiveBet) return deny('ALREADY_BET', 'You already have a bet on this item')
+
+  if (!Number.isInteger(points) || points < 1) {
+    return deny('INVALID_AMOUNT', 'The bet must be a positive whole number of points')
+  }
+  if (points > item.maxPoints) {
+    return deny('BET_ABOVE_MAX', `The most a bet on this item can carry is ${item.maxPoints} points`)
+  }
+  // Only CONFIRMED points are spendable: a bet can never be funded by an event
+  // that is still one registration away from being cancelled.
+  if (points > availablePoints) {
+    return deny('INSUFFICIENT_POINTS', 'You do not have enough confirmed points for this bet')
+  }
+
+  return allow({ points })
+}
+
+/**
+ * Withdrawing a bet hands the hold back. The owner may do it while bets are
+ * being taken; an admin may do it for anybody until the item is drawn.
+ */
+export function evaluateBetWithdrawal(params: {
+  actor: Actor
+  bet: { userId: string; guildId: string; status: 'ACTIVE' | 'WON' | 'RELEASED' }
+  item: Pick<LootItemLike, 'status'>
+  banner: LootBannerLike
+  now: Date
+}): RuleResult<{ viaAdmin: boolean }> {
+  const { actor, bet, item, banner, now } = params
+
+  const ownership = authorizeResource({
+    actor,
+    ownerUserId: bet.userId,
+    resourceGuildId: bet.guildId,
+  })
+  if (!ownership.ok) return ownership
+
+  if (bet.status !== 'ACTIVE' || item.status !== 'OPEN') {
+    return deny('BET_SETTLED', 'This bet was already settled')
+  }
+  if (!ownership.value.viaAdmin && !isBannerAcceptingBets(banner, now)) {
+    return deny('LOOT_CLOSED', 'Bets are locked until the draw')
+  }
+  return allow(ownership.value)
+}
+
+export type WheelSlice = {
+  kind: 'STAFF' | 'BET'
+  /** The bet this slice belongs to; null for the staff slice. */
+  betId: string | null
+  label: string
+  /** Probability, 0..1. The slices of one wheel sum to 1. */
+  weight: number
+}
+
+/**
+ * The wheel.
+ *
+ * The staff slice is a fixed share of every wheel. The rest is split between
+ * the bets in proportion to their points - however few points are on the
+ * table in total, the bettors always share the whole remainder. With no staff
+ * member picked, the bettors share everything.
+ */
+export function buildLootWheel(params: {
+  bets: readonly { id: string; label: string; points: number }[]
+  staffLabel: string | null
+  staffSharePct: number
+}): WheelSlice[] {
+  const bets = params.bets.filter((b) => Number.isFinite(b.points) && b.points > 0)
+  if (bets.length === 0) return []
+
+  const staffShare =
+    params.staffLabel === null ? 0 : Math.min(100, Math.max(0, params.staffSharePct)) / 100
+  const total = bets.reduce((sum, b) => sum + b.points, 0)
+
+  const slices: WheelSlice[] = bets.map((b) => ({
+    kind: 'BET',
+    betId: b.id,
+    label: b.label,
+    weight: ((1 - staffShare) * b.points) / total,
+  }))
+
+  if (staffShare > 0 && params.staffLabel !== null) {
+    slices.push({ kind: 'STAFF', betId: null, label: params.staffLabel, weight: staffShare })
+  }
+  return slices
+}
+
+/**
+ * Picks the slice a roll in [0, 1) lands on. The roll is injected - the
+ * service draws it from a CSPRNG - so the choice itself is testable.
+ */
+export function pickWheelSlice(slices: readonly WheelSlice[], roll: number): WheelSlice | null {
+  if (slices.length === 0) return null
+  const clamped = Math.min(Math.max(roll, 0), 1 - Number.EPSILON)
+
+  let cumulative = 0
+  for (const slice of slices) {
+    cumulative += slice.weight
+    if (clamped < cumulative) return slice
+  }
+  // Floating point can leave the sum a hair under 1.
+  return slices[slices.length - 1] ?? null
+}
+
+/**
+ * Running a draw. The randomness is server-side and the draw settles in the
+ * same transaction, so there is no "spin again". What is left to guard is the
+ * person pressing the button: an admin with a bet on the item may not be the
+ * one who draws it.
+ */
+export function evaluateLootDraw(params: {
+  actor: Actor
+  item: LootItemLike
+  bets: readonly { userId: string }[]
+  staff: { id: string; guildId: string; role: UserRole } | null
+}): RuleResult<undefined> {
+  const { actor, item, bets, staff } = params
+
+  const adminCheck = authorizeAdminAction(actor, item.guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  if (item.status !== 'OPEN') return deny('ITEM_NOT_OPEN', 'This item was already drawn')
+  if (bets.length === 0) return deny('NO_BETS', 'Nobody has bet on this item yet')
+  if (bets.some((b) => b.userId === actor.id)) {
+    return deny('SELF_DRAW_FORBIDDEN', 'Another admin must draw an item you bet on')
+  }
+  if (staff !== null && (staff.guildId !== item.guildId || !isGuildAdmin(staff.role))) {
+    return deny('INVALID_STAFF', 'The staff slice must belong to an admin of this guild')
+  }
+  return allow(undefined)
+}
+
+// ---------------------------------------------------------------------------
+// Meme raffle
+// ---------------------------------------------------------------------------
+
+export const MEME_MAX_CANDIDATES = 200
+
+/** A points-free raffle among members an admin picks. */
+export function evaluateMemeDraw(params: {
+  actor: Actor
+  guildId: string
+  itemName: string
+  candidates: readonly { id: string; guildId: string; isActive: boolean }[]
+  requestedCount: number
+}): RuleResult<{ itemName: string }> {
+  const { actor, guildId, candidates, requestedCount } = params
+
+  const adminCheck = authorizeAdminAction(actor, guildId)
+  if (!adminCheck.ok) return adminCheck
+
+  const name = validateItemName(params.itemName)
+  if (!name.ok) return name
+
+  if (requestedCount < 1 || requestedCount > MEME_MAX_CANDIDATES) {
+    return deny('INVALID_CANDIDATES', `Pick between 1 and ${MEME_MAX_CANDIDATES} members`)
+  }
+  // Every id asked for must have loaded, from this guild, and be active. A
+  // missing one is treated like a foreign one: never confirm what exists.
+  if (
+    candidates.length !== requestedCount ||
+    candidates.some((c) => c.guildId !== guildId || !c.isActive)
+  ) {
+    return deny('INVALID_CANDIDATES', 'Every candidate must be an active member of this guild')
+  }
+  return allow({ itemName: name.value })
+}
+
+/** Uniform index in [0, count) from a roll in [0, 1). */
+export function pickUniformIndex(count: number, roll: number): number {
+  if (count <= 0) return -1
+  const clamped = Math.min(Math.max(roll, 0), 1 - Number.EPSILON)
+  return Math.min(count - 1, Math.floor(clamped * count))
+}
+
+// ---------------------------------------------------------------------------
+// Boss schedule
+// ---------------------------------------------------------------------------
+
+/** The guild plays on Brasilia time, which has had no daylight saving since 2019. */
+export const BRT_OFFSET_HOURS = -3
+
+export type BossRespawnKindLike = 'INTERVAL' | 'DAILY' | 'WEEKLY'
+
+export type BossSchedule = {
+  respawnKind: BossRespawnKindLike
+  intervalHours: number | null
+  anchorAt: Date | null
+  dailyTimes: string | null
+  weekdays: string | null
+}
+
+export type ClockTime = { hour: number; minute: number }
+
+/** "16:00, 22:30" -> [{16,0},{22,30}]. Null when any entry is malformed. */
+export function parseDailyTimes(text: string | null): ClockTime[] | null {
+  if (text === null) return null
+  const parts = text
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+  if (parts.length === 0 || parts.length > 24) return null
+
+  const times: ClockTime[] = []
+  for (const part of parts) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(part)
+    if (!match) return null
+    const hour = Number(match[1])
+    const minute = Number(match[2])
+    if (hour > 23 || minute > 59) return null
+    times.push({ hour, minute })
+  }
+  return times
+}
+
+/** "0,3,5" -> [0,3,5], 0 = Sunday. Null when any entry is malformed. */
+export function parseWeekdays(text: string | null): number[] | null {
+  if (text === null) return null
+  const parts = text
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+  if (parts.length === 0 || parts.length > 7) return null
+
+  const days: number[] = []
+  for (const part of parts) {
+    if (!/^[0-6]$/.test(part)) return null
+    days.push(Number(part))
+  }
+  return [...new Set(days)].sort((a, b) => a - b)
+}
+
+/** Normalises a schedule, dropping the fields its kind does not use. */
+export function validateBossSchedule(schedule: BossSchedule): RuleResult<BossSchedule> {
+  const base = { intervalHours: null, anchorAt: null, dailyTimes: null, weekdays: null }
+
+  if (schedule.respawnKind === 'INTERVAL') {
+    const hours = schedule.intervalHours
+    if (hours === null || !Number.isInteger(hours) || hours < 1 || hours > 720) {
+      return deny('INVALID_SCHEDULE', 'The respawn interval must be between 1 and 720 hours')
+    }
+    if (schedule.anchorAt === null || Number.isNaN(schedule.anchorAt.getTime())) {
+      return deny('INVALID_SCHEDULE', 'An interval respawn needs a known spawn time')
+    }
+    return allow({
+      ...base,
+      respawnKind: 'INTERVAL',
+      intervalHours: hours,
+      anchorAt: schedule.anchorAt,
+    })
+  }
+
+  const times = parseDailyTimes(schedule.dailyTimes)
+  if (!times) {
+    return deny('INVALID_SCHEDULE', 'Spawn times must look like 16:00, 22:30')
+  }
+  const dailyTimes = times
+    .map((t) => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`)
+    .join(', ')
+
+  if (schedule.respawnKind === 'DAILY') {
+    return allow({ ...base, respawnKind: 'DAILY', dailyTimes })
+  }
+
+  const days = parseWeekdays(schedule.weekdays)
+  if (!days) return deny('INVALID_SCHEDULE', 'Pick at least one weekday')
+  return allow({ ...base, respawnKind: 'WEEKLY', dailyTimes, weekdays: days.join(',') })
+}
+
+/** A boss in a group follows the group; a boss on its own uses its own fields. */
+export function resolveBossSchedule(
+  boss: {
+    respawnKind: BossRespawnKindLike | null
+    intervalHours: number | null
+    anchorAt: Date | null
+    dailyTimes: string | null
+    weekdays: string | null
+  },
+  group: BossSchedule | null,
+): BossSchedule | null {
+  if (group) return group
+  if (boss.respawnKind === null) return null
+  return {
+    respawnKind: boss.respawnKind,
+    intervalHours: boss.intervalHours,
+    anchorAt: boss.anchorAt,
+    dailyTimes: boss.dailyTimes,
+    weekdays: boss.weekdays,
+  }
+}
+
+const HOUR_MS = 3_600_000
+
+/** The instant a BRT wall-clock time falls on, `dayOffset` days from today in BRT. */
+function brtInstant(now: Date, dayOffset: number, time: ClockTime): number {
+  const brtNow = new Date(now.getTime() + BRT_OFFSET_HOURS * HOUR_MS)
+  return (
+    Date.UTC(
+      brtNow.getUTCFullYear(),
+      brtNow.getUTCMonth(),
+      brtNow.getUTCDate() + dayOffset,
+      time.hour,
+      time.minute,
+    ) -
+    BRT_OFFSET_HOURS * HOUR_MS
+  )
+}
+
+/**
+ * The next spawn strictly after `now`, or null when the schedule cannot
+ * produce one. An interval boss that spawns exactly now is already up, so its
+ * next spawn is a full cycle away.
+ */
+export function nextSpawn(schedule: BossSchedule, now: Date): Date | null {
+  const nowMs = now.getTime()
+
+  if (schedule.respawnKind === 'INTERVAL') {
+    if (schedule.anchorAt === null || schedule.intervalHours === null) return null
+    const interval = schedule.intervalHours * HOUR_MS
+    if (interval <= 0) return null
+    const anchor = schedule.anchorAt.getTime()
+    if (anchor > nowMs) return new Date(anchor)
+    const cycles = Math.floor((nowMs - anchor) / interval) + 1
+    return new Date(anchor + cycles * interval)
+  }
+
+  const times = parseDailyTimes(schedule.dailyTimes)
+  if (!times) return null
+
+  if (schedule.respawnKind === 'DAILY') {
+    let best: number | null = null
+    for (const time of times) {
+      let at = brtInstant(now, 0, time)
+      if (at <= nowMs) at = brtInstant(now, 1, time)
+      if (best === null || at < best) best = at
+    }
+    return best === null ? null : new Date(best)
+  }
+
+  const days = parseWeekdays(schedule.weekdays)
+  if (!days) return null
+  const todayBrt = new Date(nowMs + BRT_OFFSET_HOURS * HOUR_MS).getUTCDay()
+
+  let best: number | null = null
+  for (let offset = 0; offset <= 7; offset++) {
+    if (!days.includes((todayBrt + offset) % 7)) continue
+    for (const time of times) {
+      const at = brtInstant(now, offset, time)
+      if (at > nowMs && (best === null || at < best)) best = at
+    }
+  }
+  return best === null ? null : new Date(best)
+}
+
+/** The BRT calendar day an instant falls on: a stable key plus its parts. */
+export function brtDay(at: Date): { key: string; weekday: number; day: number; month: number } {
+  const brt = new Date(at.getTime() + BRT_OFFSET_HOURS * HOUR_MS)
+  const month = brt.getUTCMonth() + 1
+  return {
+    key: `${brt.getUTCFullYear()}-${String(month).padStart(2, '0')}-${String(brt.getUTCDate()).padStart(2, '0')}`,
+    weekday: brt.getUTCDay(),
+    day: brt.getUTCDate(),
+    month,
+  }
 }

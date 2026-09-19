@@ -75,8 +75,7 @@ export function MemberActions({ member }: { member: Member }) {
             <option value="BAN">{t.admin.ban}</option>
             <option value="SUSPENSION">{t.admin.suspension}</option>
             <option value="NO_EVENTS">{t.admin.blockEvents}</option>
-            <option value="NO_AUCTION">{t.admin.blockAuctions}</option>
-            <option value="NO_MARKET">{t.admin.blockMarket}</option>
+            <option value="NO_LOOT">{t.admin.blockLoot}</option>
           </Select>
         </Field>
         <Field label={t.admin.durationDays} hint={t.admin.durationHint}>

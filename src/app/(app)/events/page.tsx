@@ -1,16 +1,29 @@
+import { RedeemCodeForm } from '@/components/redeem-code-form'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
 import { requireSession } from '@/lib/session'
+import { listOwnCharacters } from '@/services/accounts'
 import { listGuildEvents } from '@/services/events'
 
 export const dynamic = 'force-dynamic'
 
 export default async function EventsPage() {
   const { actor, now } = await requireSession()
-  const events = await listGuildEvents(actor.guildId)
+  const [events, characters] = await Promise.all([
+    listGuildEvents(actor.guildId),
+    listOwnCharacters(actor.id),
+  ])
   const t = await getDictionary()
 
   return (
+    <>
+    <Panel title={t.vx.redeemTitle} subtitle={t.dashboard.redeemSubtitle} tone="refined">
+      <RedeemCodeForm
+        characters={characters
+          .filter((c) => c.isActive)
+          .map((c) => ({ id: c.id, name: c.name, kind: c.kind, level: c.level }))}
+      />
+    </Panel>
     <Panel
       title={t.events.title}
       subtitle={t.events.subtitle}
@@ -56,5 +69,6 @@ export default async function EventsPage() {
         </Table>
       )}
     </Panel>
+    </>
   )
 }

@@ -1,11 +1,10 @@
 import 'server-only'
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db, type Executor } from '@/db'
 import {
   characters,
   eventRegistrations,
-  marketListings,
   pointLedger,
   userRestrictions,
   users,
@@ -15,6 +14,7 @@ import {
 import { recordAudit } from '@/lib/audit'
 import { AppError, unwrap } from '@/lib/errors'
 import { loadRestrictions } from '@/lib/restrictions'
+import { releaseActiveBetsForUser } from './loot'
 import {
   authorizeAdminAction,
   authorizeModeration,
@@ -109,8 +109,7 @@ export type ApplyRestrictionInput = {
 }
 
 /**
- * Applies a ban, a timed suspension, or a narrower block (events, auctions,
- * market). Bans and suspensions are mirrored into Supabase Auth so the
+ * Applies a ban, a timed suspension, or a narrower block (events, loot bets). Bans and suspensions are mirrored into Supabase Auth so the
  * credential itself stops issuing tokens - defence in depth, in case a bug ever
  * let a request past our own check.
  */
@@ -276,18 +275,9 @@ export async function revokeAccessPermanently(params: {
     // Their characters stop being selectable anywhere.
     await tx.update(characters).set({ isActive: false, updatedAt: now }).where(eq(characters.userId, userId))
 
-    // Live market listings are withdrawn. The comment used to promise this
-    // while nothing did it, so a permanently revoked member kept advertising
-    // to a guild they can no longer be reached in. Points and history stay.
-    await tx
-      .update(marketListings)
-      .set({ status: 'CANCELLED', updatedAt: now })
-      .where(
-        and(
-          eq(marketListings.sellerUserId, userId),
-          inArray(marketListings.status, ['ACTIVE', 'RESERVED']),
-        ),
-      )
+    // Live loot bets are handed back: points held on a wheel the member can
+    // never be paid out of would otherwise stay locked for good.
+    await releaseActiveBetsForUser(userId, actor.id, now, tx)
 
     await tx.insert(userRestrictions).values({
       guildId: target.guildId,

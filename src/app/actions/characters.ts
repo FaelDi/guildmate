@@ -1,16 +1,22 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { runAction, type ActionResult } from '@/lib/errors'
+import { z } from 'zod'
+import { AppError, runAction, type ActionResult } from '@/lib/errors'
 import { requireSession } from '@/lib/session'
 import {
   createCharacter,
   retireCharacter,
   setMainCharacter,
   updateCharacter,
+  characterStatsSchema,
   type CharacterDraftDto,
-  type CharacterPatchDto,
 } from '@/services/characters'
+
+const updateInputSchema = z.object({
+  characterId: z.string().max(64),
+  patch: characterStatsSchema,
+})
 
 /**
  * Roster management. Every id here arrives in a FormData and is therefore
@@ -19,8 +25,7 @@ import {
  */
 
 function revalidateRoster(): void {
-  revalidatePath('/profile')
-  revalidatePath('/dashboard')
+  revalidatePath('/', 'layout')
 }
 
 function readDraft(formData: FormData): CharacterDraftDto {
@@ -32,16 +37,6 @@ function readDraft(formData: FormData): CharacterDraftDto {
     // come back as INVALID_LEVEL, not as a NaN the schema rejects generically.
     level: Number(formData.get('level')) || 0,
     kind: formData.get('kind') === 'ALT' ? 'ALT' : 'MAIN',
-  }
-}
-
-function readPatch(formData: FormData): CharacterPatchDto {
-  return {
-    name: String(formData.get('characterName') ?? ''),
-    biosuit: String(formData.get('biosuit') ?? ''),
-    // `|| 0` rather than a default: a non-numeric level must reach the rule and
-    // come back as INVALID_LEVEL, not as a NaN the schema rejects generically.
-    level: Number(formData.get('level')) || 0,
   }
 }
 
@@ -58,17 +53,22 @@ export async function createCharacterAction(
   return result
 }
 
-export async function updateCharacterAction(
-  _previous: ActionResult<null> | null,
-  formData: FormData,
-): Promise<ActionResult<null>> {
+/**
+ * Level, combat power, class and build - from the ranking and classes modals.
+ * The id is attacker-controlled; the service loads the row and the rule decides
+ * whether this caller owns it or is an admin of its guild.
+ */
+export async function updateCharacterAction(input: unknown): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
     const { actor, restrictions, now } = await requireSession()
+    const parsed = updateInputSchema.safeParse(input)
+    if (!parsed.success) throw new AppError('INVALID_INPUT', 'Check the values and try again')
+
     await updateCharacter({
       actor,
       restrictions,
-      characterId: String(formData.get('characterId') ?? ''),
-      patch: readPatch(formData),
+      characterId: parsed.data.characterId,
+      patch: parsed.data.patch,
       now,
     })
     return null

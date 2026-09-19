@@ -133,7 +133,10 @@ export async function getSettings(guildId: string): Promise<SettingsLike> {
     minLevelToRegister: row?.minLevelToRegister ?? 1,
     altPointsPolicy: row?.altPointsPolicy ?? 'CREDIT_MAIN',
     adminGrantApprovalThreshold: row?.adminGrantApprovalThreshold ?? 500,
-    auctionAntiSnipeSeconds: row?.auctionAntiSnipeSeconds ?? 120,
+    megaCpThreshold: row?.megaCpThreshold ?? 190000,
+    titanCpThreshold: row?.titanCpThreshold ?? 155000,
+    lootMinParticipationPct: row?.lootMinParticipationPct ?? 90,
+    lootStaffSharePct: row?.lootStaffSharePct ?? 15,
   }
 }
 

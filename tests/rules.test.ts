@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeRestrictionTypes,
-  applyAntiSnipe,
   authorizeInviteIssue,
   authorizeModeration,
   authorizeResource,
@@ -19,24 +18,18 @@ import {
   MEMBER_INVITE_MAX_USES,
   evaluateAccountAccess,
   evaluateAdminGrant,
-  evaluateBid,
   evaluateCharacterCreate,
   evaluateCharacterRetire,
-  evaluateCharacterUpdate,
-  evaluateListingCreate,
-  evaluateMarketAccess,
   evaluateMainSwitch,
   evaluateRegistration,
   isGuildAdmin,
   isRestrictionInForce,
-  minimumBid,
   planPointsChange,
   resolveCodeExpiry,
   resolveEventQuorum,
   resolveEventSweep,
   MAX_CHARACTERS_PER_ACCOUNT,
   type Actor,
-  type AuctionLike,
   type CharacterDraft,
   type CharacterLike,
   type EventLike,
@@ -63,7 +56,10 @@ const settings: SettingsLike = {
   minLevelToRegister: 10,
   altPointsPolicy: 'CREDIT_MAIN',
   adminGrantApprovalThreshold: 500,
-  auctionAntiSnipeSeconds: 120,
+  megaCpThreshold: 190_000,
+  titanCpThreshold: 155_000,
+  lootMinParticipationPct: 90,
+  lootStaffSharePct: 15,
 }
 
 function actor(overrides: Partial<Actor> = {}): Actor {
@@ -502,144 +498,6 @@ describe('re-scoring cannot pay the admin doing it', () => {
   })
 })
 
-describe('the store restriction covers editing, not just posting', () => {
-  const barred: RestrictionLike[] = [
-    { type: 'NO_MARKET', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
-  ]
-
-  it('refuses a barred member', () => {
-    const result = evaluateMarketAccess({ actor: actor(), restrictions: barred, now: NOW })
-    expect(!result.ok && result.code).toBe('RESTRICTED')
-  })
-
-  it('lets an unrestricted member through', () => {
-    expect(evaluateMarketAccess({ actor: actor(), restrictions: [], now: NOW }).ok).toBe(true)
-  })
-
-  it('refuses a banned account before it looks at the store restriction', () => {
-    const result = evaluateMarketAccess({
-      actor: actor(),
-      restrictions: [
-        { type: 'BAN', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
-      ],
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('ACCOUNT_BANNED')
-  })
-
-  it('ignores a restriction that already lapsed', () => {
-    const lapsed: RestrictionLike[] = [
-      {
-        type: 'NO_MARKET',
-        startsAt: new Date(NOW.getTime() - 7_200_000),
-        expiresAt: new Date(NOW.getTime() - 1),
-        revokedAt: null,
-      },
-    ]
-    expect(evaluateMarketAccess({ actor: actor(), restrictions: lapsed, now: NOW }).ok).toBe(true)
-  })
-})
-
-describe('evaluateBid', () => {
-  const auction: AuctionLike = {
-    id: 'auction-1',
-    guildId: GUILD,
-    status: 'OPEN',
-    startingBid: 100,
-    minIncrement: 10,
-    currentBid: null,
-    currentBidderUserId: null,
-    endsAt: new Date(NOW.getTime() + 3_600_000),
-  }
-
-  function bidParams(overrides: Record<string, unknown> = {}) {
-    return {
-      auction,
-      actor: actor(),
-      character: character(),
-      restrictions: [] as RestrictionLike[],
-      availablePoints: 1000,
-      amount: 100,
-      now: NOW,
-      ...overrides,
-    } as Parameters<typeof evaluateBid>[0]
-  }
-
-  it('accepts a valid opening bid from a main character', () => {
-    expect(evaluateBid(bidParams()).ok).toBe(true)
-  })
-
-  it('refuses an alt character', () => {
-    const result = evaluateBid(
-      bidParams({ character: character({ kind: 'ALT', mainCharacterId: 'char-main' }) }),
-    )
-    expect(!result.ok && result.code).toBe('MAIN_CHARACTER_REQUIRED')
-  })
-
-  it('refuses a bid above the confirmed balance', () => {
-    const result = evaluateBid(bidParams({ amount: 200, availablePoints: 199 }))
-    expect(!result.ok && result.code).toBe('INSUFFICIENT_POINTS')
-  })
-
-  it('ignores pending points entirely', () => {
-    // 0 confirmed means no bid is fundable, however large the pending pile is.
-    const result = evaluateBid(bidParams({ availablePoints: 0 }))
-    expect(!result.ok && result.code).toBe('INSUFFICIENT_POINTS')
-  })
-
-  it('enforces the minimum increment over the standing bid', () => {
-    const contested = { ...auction, currentBid: 100, currentBidderUserId: 'user-9' }
-    expect(minimumBid(contested)).toBe(110)
-    const result = evaluateBid(bidParams({ auction: contested, amount: 109 }))
-    expect(!result.ok && result.code).toBe('BID_TOO_LOW')
-  })
-
-  it('refuses bidding against yourself', () => {
-    const contested = { ...auction, currentBid: 100, currentBidderUserId: 'user-1' }
-    const result = evaluateBid(bidParams({ auction: contested, amount: 200 }))
-    expect(!result.ok && result.code).toBe('ALREADY_WINNING')
-  })
-
-  it('refuses after the auction ends', () => {
-    const ended = { ...auction, endsAt: new Date(NOW.getTime() - 1) }
-    const result = evaluateBid(bidParams({ auction: ended }))
-    expect(!result.ok && result.code).toBe('AUCTION_ENDED')
-  })
-
-  it('refuses a fractional or negative amount', () => {
-    expect(!evaluateBid(bidParams({ amount: 10.5 })).ok).toBe(true)
-    expect(!evaluateBid(bidParams({ amount: -5 })).ok).toBe(true)
-  })
-
-  it('refuses a member barred from auctions', () => {
-    const result = evaluateBid(
-      bidParams({
-        restrictions: [
-          { type: 'NO_AUCTION', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
-        ],
-      }),
-    )
-    expect(!result.ok && result.code).toBe('RESTRICTED')
-  })
-})
-
-describe('applyAntiSnipe', () => {
-  it('extends an auction when a bid lands inside the window', () => {
-    const endsAt = new Date(NOW.getTime() + 30_000)
-    expect(applyAntiSnipe(endsAt, NOW, 120).getTime()).toBe(NOW.getTime() + 120_000)
-  })
-
-  it('leaves a distant end time alone', () => {
-    const endsAt = new Date(NOW.getTime() + 600_000)
-    expect(applyAntiSnipe(endsAt, NOW, 120)).toBe(endsAt)
-  })
-
-  it('is a no-op when disabled', () => {
-    const endsAt = new Date(NOW.getTime() + 1_000)
-    expect(applyAntiSnipe(endsAt, NOW, 0)).toBe(endsAt)
-  })
-})
-
 describe('restrictions and account access', () => {
   it('ignores a revoked restriction', () => {
     const restriction: RestrictionLike = {
@@ -675,7 +533,7 @@ describe('restrictions and account access', () => {
     const types = activeRestrictionTypes(
       [
         { type: 'BAN', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
-        { type: 'NO_MARKET', startsAt: new Date(NOW.getTime() - 1), expiresAt: new Date(NOW.getTime() - 1), revokedAt: null },
+        { type: 'NO_LOOT', startsAt: new Date(NOW.getTime() - 1), expiresAt: new Date(NOW.getTime() - 1), revokedAt: null },
       ],
       NOW,
     )
@@ -865,80 +723,6 @@ describe('resolveCodeExpiry', () => {
     expect(resolveCodeExpiry({ ttlMinutes: 1.5, settings, now: NOW }).ok).toBe(false)
   })
 })
-
-describe('evaluateListingCreate', () => {
-  const input = {
-    itemName: 'Cora Force Blade',
-    itemType: 'WEAPON' as const,
-    rarity: 'EPIC' as const,
-    itemLevel: 55,
-    priceDiamonds: 2500,
-    quantity: 1,
-  }
-
-  it('accepts a valid listing and trims the name', () => {
-    const result = evaluateListingCreate({
-      actor: actor(),
-      character: character(),
-      restrictions: [],
-      input: { ...input, itemName: '  Cora Force Blade  ' },
-      now: NOW,
-    })
-    expect(result.ok && result.value.itemName).toBe('Cora Force Blade')
-  })
-
-  it('lets an alt list items (only points are main-only)', () => {
-    const result = evaluateListingCreate({
-      actor: actor(),
-      character: character({ kind: 'ALT', mainCharacterId: 'char-main' }),
-      restrictions: [],
-      input,
-      now: NOW,
-    })
-    expect(result.ok).toBe(true)
-  })
-
-  it('refuses listing on behalf of another member', () => {
-    const result = evaluateListingCreate({
-      actor: actor(),
-      character: character({ userId: 'someone-else' }),
-      restrictions: [],
-      input,
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('FORBIDDEN')
-  })
-
-  it('refuses a zero or negative price', () => {
-    for (const priceDiamonds of [0, -1]) {
-      const result = evaluateListingCreate({
-        actor: actor(),
-        character: character(),
-        restrictions: [],
-        input: { ...input, priceDiamonds },
-        now: NOW,
-      })
-      expect(!result.ok && result.code).toBe('INVALID_PRICE')
-    }
-  })
-
-  it('refuses a member barred from the market', () => {
-    const result = evaluateListingCreate({
-      actor: actor(),
-      character: character(),
-      restrictions: [
-        { type: 'NO_MARKET', startsAt: new Date(NOW.getTime() - 1), expiresAt: null, revokedAt: null },
-      ],
-      input,
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('RESTRICTED')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Guild invites
-// ---------------------------------------------------------------------------
 
 describe('guild invites', () => {
   function invite(overrides: Partial<InviteLike> = {}): InviteLike {
@@ -1472,85 +1256,6 @@ describe('adding a character', () => {
       now: NOW,
     })
     expect(!result.ok && result.code).toBe('FORBIDDEN')
-  })
-})
-
-describe('editing a character', () => {
-  const patch = { name: 'Nova Prime', biosuit: 'Ranger', level: 55 }
-
-  it('accepts the owner and normalises the fields', () => {
-    const result = evaluateCharacterUpdate({
-      actor: actor(),
-      restrictions: [],
-      character: MAIN,
-      input: { ...patch, name: '  Nova Prime ' },
-      now: NOW,
-    })
-    expect(result.ok && result.value).toEqual(patch)
-  })
-
-  it('refuses editing another member character', () => {
-    const result = evaluateCharacterUpdate({
-      actor: actor({ id: 'stranger' }),
-      restrictions: [],
-      character: MAIN,
-      input: patch,
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('FORBIDDEN')
-  })
-
-  it('refuses editing a character from another guild', () => {
-    const result = evaluateCharacterUpdate({
-      actor: actor(),
-      restrictions: [],
-      character: character({ guildId: 'other-guild' }),
-      input: patch,
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('FORBIDDEN')
-  })
-
-  it('refuses editing a retired character', () => {
-    const result = evaluateCharacterUpdate({
-      actor: actor(),
-      restrictions: [],
-      character: character({ isActive: false }),
-      input: patch,
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('CHARACTER_INACTIVE')
-  })
-
-  it('refuses a banned account', () => {
-    const result = evaluateCharacterUpdate({
-      actor: actor(),
-      restrictions: [BAN],
-      character: MAIN,
-      input: patch,
-      now: NOW,
-    })
-    expect(!result.ok && result.code).toBe('ACCOUNT_BANNED')
-  })
-
-  it('applies the same field bounds as creation', () => {
-    const level = evaluateCharacterUpdate({
-      actor: actor(),
-      restrictions: [],
-      character: MAIN,
-      input: { ...patch, level: 1000 },
-      now: NOW,
-    })
-    expect(!level.ok && level.code).toBe('INVALID_LEVEL')
-
-    const name = evaluateCharacterUpdate({
-      actor: actor(),
-      restrictions: [],
-      character: MAIN,
-      input: { ...patch, name: 'x' },
-      now: NOW,
-    })
-    expect(!name.ok && name.code).toBe('INVALID_NAME')
   })
 })
 

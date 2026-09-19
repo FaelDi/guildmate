@@ -1,7 +1,7 @@
 # API surface
 
-The UI talks to the server through **server actions**, not a REST API. Only three HTTP
-routes exist, and two of them are the storage proxy.
+The UI talks to the server through **server actions**, not a REST API. Only two HTTP
+routes exist: the cron sweep and the live-draw poll.
 
 Every action returns `ActionResult<T>`:
 
@@ -49,16 +49,18 @@ guild — the guild id is never read from the form.
 
 ### `src/app/actions/characters.ts`
 
-Roster self-service. Every one of these is **owner-only** — admins get no override, because
-whoever controls a roster controls where an ALT's points are attributed. Two mechanisms
-enforce it: the roster is loaded keyed to `actor.id` and the rules re-assert owner + guild on
-every row (`ownsRoster`); the single-row update path additionally calls `authorizeResource`
-with `allowAdminOverride: false`.
+Roster **structure** (create, promote to MAIN, retire) is **owner-only** — admins get no
+override, because whoever controls a roster controls where an ALT's points are attributed.
+The roster is loaded keyed to `actor.id` and the rules re-assert owner + guild on every row
+(`ownsRoster`).
+
+Character **stats** are different: `updateCharacterAction` is owner **or admin of the same
+guild** (`evaluateCharacterStatsUpdate`), and only an admin may rename.
 
 | Action | Auth | Notes |
 |---|---|---|
 | `createCharacterAction` | owner | First character is the MAIN; later ones are ALTs linked to it. Adopts pre-existing unlinked ALTs |
-| `updateCharacterAction` | owner | Name, biosuit and level only. `kind` is **not** patchable here |
+| `updateCharacterAction` | owner or admin | Object input `{ characterId, patch }`: level, combat power, class (biosuit), build flags; name admin-only. `kind` is **not** patchable |
 | `setMainCharacterAction` | owner | Promotes an ALT: demotes the old MAIN and relinks the roster in one transaction |
 | `retireCharacterAction` | owner | Logical retirement. Refuses the MAIN and refuses the last character |
 
@@ -73,21 +75,32 @@ with `allowAdminOverride: false`.
 | `cancelEventAction` | admin | `force` required to cancel an already-confirmed event |
 | `grantPointsAction` | admin | Manual scoring. Refuses the admin's own account and its alts |
 
-### `src/app/actions/auctions.ts`
+### `src/app/actions/vortex.ts`
+
+The command-center screens. Every action takes a plain object (shape-checked with Zod, a
+malformed one is `INVALID_INPUT`) and every id is re-authorized by the service against the
+row it loads.
 
 | Action | Auth | Notes |
 |---|---|---|
-| `placeBidAction` | session | MAIN character only, confirmed points only, row-locked |
-| `createAuctionAction` | admin | |
-| `cancelAuctionAction` | admin | Releases the outstanding hold |
-
-### `src/app/actions/market.ts`
-
-| Action | Auth | Notes |
-|---|---|---|
-| `createListingAction` | session | Priced in diamonds |
-| `updateListingAction` | owner or admin | Ownership checked in the service |
-| `closeListingAction` | owner or admin | `SOLD` or `CANCELLED` |
+| `advanceWeekAction` | admin | Opens the next week; participation restarts. Refused within 1h of the last one |
+| `updateThresholdsAction` | admin | Mega / Titan combat-power rulers. Titan may not exceed Mega |
+| `excuseAbsenceAction` | admin | Counts N of this week's events as attended. Never awards points. Not on own account |
+| `revokeExcuseAction` | admin | Logical revoke |
+| `applyPenaltyAction` | admin | `PENALTY` ledger row, negative, CONFIRMED. Not on own account |
+| `reversePenaltyAction` | admin | One `PENALTY_REVERSAL` for exactly the amount, once. Not on own account |
+| `createBannerAction` | admin | Loot banner: title, deadline (or none), 1–20 items with cap and tier restriction. One open banner per guild |
+| `extendBannerAction` | admin | Adds hours from the later of the deadline and now |
+| `closeBannerAction` | admin | Cancels undrawn items and releases every live bet |
+| `placeBetAction` | session | Bets with the caller's **MAIN** (never a form-supplied character). Confirmed points only, ≥ min weekly participation, tier restriction, per-item cap. Holds the points. Rate limited |
+| `withdrawBetAction` | owner while open, admin until drawn | Releases the hold |
+| `drawItemAction` | admin | CSPRNG draw, settles in the same transaction, persists the wheel. Refused to an admin who bet on the item |
+| `updateLootNoteAction` | admin | Free-text note on a drawn item |
+| `drawMemeAction` | admin | Uniform CSPRNG pick among active mains of the guild. No points |
+| `updateMemeNoteAction` / `deleteMemeDrawAction` | admin | Meme history upkeep |
+| `saveBossGroupAction` / `deleteBossGroupAction` | admin | Shared respawn schedules |
+| `saveBossAction` / `deleteBossAction` | admin | A boss follows its group, or carries its own schedule |
+| `setRotationAction` | admin | Replaces this week's rotation with exactly the ids sent |
 
 ### `src/app/actions/admin.ts`
 
@@ -112,31 +125,21 @@ compared in constant time. **Fails closed**: returns 404 if the secret is unset 
 an unconfigured deployment is not an open endpoint.
 
 Confirms events at quorum, cancels events that missed the deadline (reversing every point),
-closes elapsed join windows, settles ended auctions, expires stale listings. Idempotent.
+and closes elapsed join windows. Idempotent.
 
 ```json
 { "ranAt": "...", "durationMs": 412,
-  "events": { "scanned": 5, "confirmed": ["..."], "cancelled": ["..."], "closed": [] },
-  "auctionsSettled": 1, "listingsExpired": 3 }
+  "events": { "scanned": 5, "confirmed": ["..."], "cancelled": ["..."], "closed": [] } }
 ```
 
-### `POST /api/storage/upload`
+### `GET /api/loot/live`
 
-Authenticated. Multipart with a single `file`. PNG/JPEG/WebP only, verified by magic bytes
-rather than the declared type, max 4 MB, 20 uploads per hour per member.
-
-The caller **never chooses the object key** — it is generated inside their own namespace.
+Authenticated (session cookie). Returns the loot draw that happened in the **caller's own
+guild** in the last 45 seconds, with the persisted wheel, so every open screen replays the
+same spin. The guild comes from the session, never from the request. `401` without a session.
 
 ```json
-{ "key": "guild/<guildId>/user/<userId>/<uuid>.png",
-  "url": "/api/storage/guild/<guildId>/user/<userId>/<uuid>.png" }
+{ "draw": { "id": "<itemId>", "itemName": "...", "winnerName": "...", "pointsPaid": 12,
+            "wheel": { "slices": [{ "kind": "BET", "label": "...", "weight": 0.42 }], "winnerIndex": 0 },
+            "drawnAt": "..." } }
 ```
-
-### `GET|DELETE /api/storage/<key>`
-
-Authenticated. `GET` is scoped to the caller's guild; `DELETE` requires the uploader or an
-admin. A key that is not the exact shape the app writes returns 404, as does another guild's
-object — no existence oracle.
-
-See [SECURITY.md](./SECURITY.md) for why this proxy is deny-by-default rather than a
-pass-through.

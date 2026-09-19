@@ -1,21 +1,20 @@
 import type { ReactNode } from 'react'
 
 /**
- * The shared vocabulary of the terminal.
- *
- * Two silhouettes carry the whole system: a panel is cut at the top-right, a
- * control is cut at the bottom-left. Everything else is one hairline, one
- * surface, and colour that always means a state - amber is unrefined, teal is
- * spendable, red is reversed.
+ * The shared vocabulary of the command center, as used by the older screens
+ * (events, roster, admin, sign-in). They render the same `table-container`,
+ * `input-edit` and table styles as the new tabs, so every screen reads as one
+ * product. Colour always means a state: orange is not spendable yet, green is
+ * spendable, red is a loss.
  */
 
 type Tone = 'neutral' | 'ore' | 'refined' | 'slag'
 
 const RAIL: Record<Tone, string> = {
-  neutral: 'bg-edge',
-  ore: 'bg-ore',
-  refined: 'bg-refined',
-  slag: 'bg-slag',
+  neutral: 'var(--neon-purple)',
+  ore: 'var(--neon-orange)',
+  refined: 'var(--neon-green)',
+  slag: 'var(--neon-red)',
 }
 
 export function Panel({
@@ -29,30 +28,36 @@ export function Panel({
   title?: string
   subtitle?: string
   action?: ReactNode
-  /** Colours the header rail. Use it to state what the panel is about. */
+  /** Colours the side rail. Use it to state what the panel is about. */
   tone?: Tone
   children: ReactNode
   className?: string
 }) {
   return (
-    <section
-      className={`notch-panel tick relative border border-edge bg-panel/80 backdrop-blur-sm ${className}`}
-    >
+    <section className={`table-container ${className}`} style={{ borderLeftColor: RAIL[tone] }}>
       {(title || action) && (
-        <header className="flex items-start justify-between gap-4 border-b border-edge px-5 py-3.5">
+        <header
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 15,
+            marginBottom: 20,
+            flexWrap: 'wrap',
+          }}
+        >
           <div>
-            {title && (
-              <h2 className="font-display text-[13px] font-semibold uppercase tracking-[0.18em] text-ink">
-                {title}
-              </h2>
+            {title && <h2 style={{ margin: 0 }}>{title}</h2>}
+            {subtitle && (
+              <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: 16, maxWidth: 720 }}>
+                {subtitle}
+              </p>
             )}
-            {subtitle && <p className="mt-1 max-w-prose text-xs text-muted">{subtitle}</p>}
           </div>
           {action}
         </header>
       )}
-      <div aria-hidden className={`h-px w-full ${RAIL[tone]} opacity-70`} />
-      <div className="p-5">{children}</div>
+      {children}
     </section>
   )
 }
@@ -68,34 +73,46 @@ export function Stat({
   hint?: string
   tone?: Tone
 }) {
-  const valueClass = {
-    neutral: 'text-ink',
-    ore: 'text-ore',
-    refined: 'text-refined',
-    slag: 'text-slag',
-  }[tone]
-
+  const color = tone === 'neutral' ? '#fff' : RAIL[tone]
   return (
-    <div className="notch-panel relative border border-edge bg-panel-raised/70 px-4 py-3.5">
+    <div
+      className="table-container"
+      style={{ borderLeftColor: RAIL[tone], padding: '15px 20px', marginBottom: 0 }}
+    >
       <div
-        aria-hidden
-        className={`absolute left-0 top-0 h-full w-[2px] ${RAIL[tone]} opacity-80`}
-      />
-      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{label}</div>
-      <div className={`mt-1.5 font-mono text-[28px] leading-none tabular-nums ${valueClass}`}>
+        style={{
+          fontSize: 14,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: 2,
+          color: 'var(--text-muted)',
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ marginTop: 6, fontSize: 32, fontWeight: 700, color, textShadow: `0 0 12px ${color}55` }}>
         {value}
       </div>
-      {hint && <div className="mt-2 text-[11px] leading-relaxed text-muted">{hint}</div>}
+      {hint && <div style={{ marginTop: 6, fontSize: 14, color: 'var(--text-muted)' }}>{hint}</div>}
     </div>
   )
 }
 
 /** The status chip lives in its own client module: it reads the dictionary. */
-export { Badge } from "./badge"
+export { Badge } from './badge'
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   return (
-    <p className="font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-ore">
+    <p
+      style={{
+        fontSize: 14,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: 4,
+        color: 'var(--neon-cyan)',
+        margin: 0,
+      }}
+    >
       {children}
     </p>
   )
@@ -112,48 +129,55 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+      <span className="field-label" style={{ marginTop: 0 }}>
         {label}
       </span>
       {children}
-      {hint && <span className="mt-1.5 block text-[11px] leading-relaxed text-muted">{hint}</span>}
+      {hint && (
+        <span style={{ display: 'block', marginTop: 6, fontSize: 14, color: 'var(--text-muted)' }}>{hint}</span>
+      )}
     </label>
   )
 }
 
-const CONTROL =
-  'notch-control w-full border border-edge bg-void/70 px-3 py-2 text-sm text-ink outline-none ' +
-  'transition-colors placeholder:text-muted/60 hover:border-muted/50 focus:border-ore/70'
+const CONTROL = 'input-edit w-full'
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`${CONTROL} ${props.className ?? ''}`} />
+  return (
+    <input {...props} className={`${CONTROL} ${props.className ?? ''}`} style={{ textAlign: 'left', ...props.style }} />
+  )
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`${CONTROL} ${props.className ?? ''}`} />
+  return (
+    <select {...props} className={`${CONTROL} ${props.className ?? ''}`} style={{ textAlign: 'left', ...props.style }} />
+  )
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`${CONTROL} min-h-20 ${props.className ?? ''}`} />
+  return (
+    <textarea
+      {...props}
+      className={`${CONTROL} min-h-20 ${props.className ?? ''}`}
+      style={{ textAlign: 'left', ...props.style }}
+    />
+  )
 }
 
 export function Table({ head, children }: { head: readonly string[]; children: ReactNode }) {
   return (
-    <div className="-mx-5 overflow-x-auto px-5">
-      <table className="w-full min-w-max border-collapse text-sm">
+    <div style={{ overflowX: 'auto' }}>
+      <table>
         <thead>
-          <tr className="border-b border-edge">
+          <tr>
             {head.map((label, index) => (
-              <th
-                key={label || `col-${index}`}
-                className="whitespace-nowrap px-3 py-2 text-left font-display text-[10px] font-semibold uppercase tracking-[0.18em] text-muted"
-              >
+              <th key={label || `col-${index}`} className="left">
                 {label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-edge/60">{children}</tbody>
+        <tbody className="legacy-rows">{children}</tbody>
       </table>
     </div>
   )
@@ -161,7 +185,16 @@ export function Table({ head, children }: { head: readonly string[]; children: R
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="border border-dashed border-edge px-4 py-8 text-center text-sm text-muted">
+    <p
+      style={{
+        border: '1px dashed var(--glass-border)',
+        padding: '40px 15px',
+        textAlign: 'center',
+        color: 'var(--text-muted)',
+        fontSize: 18,
+        margin: 0,
+      }}
+    >
       {children}
     </p>
   )

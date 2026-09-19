@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { CreateGuildForm } from '@/components/create-guild-form'
 import { Empty, Panel } from '@/components/ui'
+import { PublicHeader } from '@/components/vx/public-header'
 import { getDictionary } from '@/lib/i18n'
 import { peekInvite } from '@/services/invites'
 
@@ -17,10 +18,9 @@ export default async function CreateGuildPage({
   const refusals: Record<string, string> = t.invite.refusals
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6 py-16">
-      <Link href="/" className="mb-6 font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
-        GuildMate
-      </Link>
+    <main>
+      <PublicHeader signInLabel={t.vx.memberAccess} joinLabel={t.auth.createAccount} />
+      <div style={{ maxWidth: 640, margin: '0 auto' }}>
 
       {status === 'LIVE' ? (
         <Panel
@@ -41,6 +41,7 @@ export default async function CreateGuildPage({
           </p>
         </Panel>
       )}
+      </div>
     </main>
   )
 }

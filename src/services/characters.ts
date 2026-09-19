@@ -7,10 +7,9 @@ import { characters } from '@/db/schema'
 import { recordAudit } from '@/lib/audit'
 import { AppError, unwrap } from '@/lib/errors'
 import {
-  authorizeResource,
   evaluateCharacterCreate,
   evaluateCharacterRetire,
-  evaluateCharacterUpdate,
+  evaluateCharacterStatsUpdate,
   evaluateMainSwitch,
   type Actor,
   type CharacterLike,
@@ -20,11 +19,11 @@ import {
 /**
  * The member's own roster.
  *
- * Everything here is self-service and deliberately gives admins no override
- * (`allowAdminOverride: false`): which character is the MAIN decides where an
- * ALT's points are attributed, so an admin able to reshape someone else's
- * roster could redirect attribution without ever touching the ledger.
- * Moderation acts on the account, not on the roster.
+ * The roster STRUCTURE (create, promote to MAIN, retire) is self-service with
+ * no admin override: which character is the MAIN decides where an ALT's points
+ * are attributed, so an admin able to reshape someone else's roster could
+ * redirect attribution without ever touching the ledger. Stats and build are
+ * different - an admin may correct them for anybody (`updateCharacter`).
  */
 
 /**
@@ -41,14 +40,24 @@ export const characterDraftSchema = z.object({
   kind: z.enum(['MAIN', 'ALT']),
 })
 
-export const characterPatchSchema = characterDraftSchema.pick({
-  name: true,
-  biosuit: true,
-  level: true,
-})
+export const characterStatsSchema = characterDraftSchema
+  .pick({ name: true, biosuit: true, level: true })
+  .extend({
+    combatPower: z.number(),
+    build: z.object({
+      skill4: z.boolean(),
+      skill5: z.boolean(),
+      skill6: z.boolean(),
+      skill7: z.boolean(),
+      constant3: z.boolean(),
+      painAdaptation: z.boolean(),
+      trinity: z.boolean(),
+      techniqueMaster: z.boolean(),
+    }),
+  })
 
 export type CharacterDraftDto = z.infer<typeof characterDraftSchema>
-export type CharacterPatchDto = z.infer<typeof characterPatchSchema>
+export type CharacterStatsDto = z.infer<typeof characterStatsSchema>
 
 const ROSTER_COLUMNS = {
   id: characters.id,
@@ -183,16 +192,21 @@ export async function createCharacter(params: {
   }
 }
 
+/**
+ * Level, combat power, class and build. The owner edits their own; an admin
+ * edits any character in the guild (the rule decides, including that only an
+ * admin may rename). The MAIN/ALT structure is not touched here.
+ */
 export async function updateCharacter(params: {
   actor: Actor
   restrictions: readonly RestrictionLike[]
   characterId: string
-  patch: CharacterPatchDto
+  patch: CharacterStatsDto
   now: Date
 }): Promise<void> {
   const { actor, restrictions, now } = params
   const characterId = assertCharacterId(params.characterId)
-  const patch = characterPatchSchema.parse(params.patch)
+  const patch = characterStatsSchema.parse(params.patch)
 
   try {
     await db.transaction(async (tx) => {
@@ -208,17 +222,8 @@ export async function updateCharacter(params: {
         throw new AppError('FORBIDDEN', 'You are not allowed to access this resource', 403)
       }
 
-      unwrap(
-        authorizeResource({
-          actor,
-          ownerUserId: character.userId,
-          resourceGuildId: character.guildId,
-          allowAdminOverride: false,
-        }),
-      )
-
       const validated = unwrap(
-        evaluateCharacterUpdate({ actor, restrictions, character, input: patch, now }),
+        evaluateCharacterStatsUpdate({ actor, restrictions, character, input: patch, now }),
       )
 
       await tx
@@ -228,6 +233,8 @@ export async function updateCharacter(params: {
           nameNormalized: validated.name.toLowerCase(),
           biosuit: validated.biosuit,
           level: validated.level,
+          combatPower: validated.combatPower,
+          ...validated.build,
           updatedAt: now,
         })
         .where(eq(characters.id, characterId))
@@ -236,15 +243,22 @@ export async function updateCharacter(params: {
         {
           guildId: character.guildId,
           actorUserId: actor.id,
-          action: 'character.update',
+          action: validated.viaAdmin ? 'character.update_by_admin' : 'character.update',
           entityType: 'character',
           entityId: characterId,
           before: {
             name: character.name,
             biosuit: character.biosuit,
             level: character.level,
+            combatPower: character.combatPower,
           },
-          after: validated,
+          after: {
+            name: validated.name,
+            biosuit: validated.biosuit,
+            level: validated.level,
+            combatPower: validated.combatPower,
+            build: validated.build,
+          },
         },
         tx,
       )

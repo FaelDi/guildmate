@@ -5,19 +5,14 @@ import {
   createCharacterAction,
   retireCharacterAction,
   setMainCharacterAction,
-  updateCharacterAction,
 } from '@/app/actions/characters'
 import { CharacterFields } from '@/components/character-fields'
 import { FormMessage, SubmitButton } from '@/components/form'
 import { useDictionary } from '@/components/locale-provider'
-import { Field, Input } from '@/components/ui'
+import { CharacterEditModal, type EditableCharacter } from '@/components/vx/character-edit'
 
-export type RosterCharacter = {
-  id: string
-  name: string
+export type RosterCharacter = EditableCharacter & {
   kind: 'MAIN' | 'ALT'
-  biosuit: string
-  level: number
   isActive: boolean
 }
 
@@ -33,17 +28,15 @@ export function AddCharacterForm({ hasMain, full }: { hasMain: boolean; full: bo
 
   if (full) {
     return (
-      <p className="text-sm text-muted">
-        {t.profile.rosterFull}
-      </p>
+      <p style={{ color: 'var(--text-muted)', fontSize: 16 }}>{t.profile.rosterFull}</p>
     )
   }
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} style={{ display: 'grid', gap: 12, maxWidth: 640 }}>
       <CharacterFields lockKind={hasMain ? 'ALT' : 'MAIN'} />
 
-      <p className="text-[11px] text-muted">
+      <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
         {hasMain ? t.profile.addAsAlt : t.profile.addAsMain}
       </p>
 
@@ -60,99 +53,55 @@ export function AddCharacterForm({ hasMain, full }: { hasMain: boolean; full: bo
  */
 export function CharacterActions({ character }: { character: RosterCharacter }) {
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<'stats' | 'build' | null>(null)
 
   const t = useDictionary()
-  const [updateState, updateFormAction] = useActionState(updateCharacterAction, null)
   const [mainState, mainFormAction] = useActionState(setMainCharacterAction, null)
   const [retireState, retireFormAction] = useActionState(retireCharacterAction, null)
 
   if (!character.isActive) {
-    return <span className="text-[11px] uppercase tracking-wider text-muted">{t.profile.retired}</span>
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="notch-control border border-edge px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:border-muted/60 hover:text-ink"
-      >
-        {t.profile.manage}
-      </button>
-    )
+    return <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>{t.profile.retired}</span>
   }
 
   return (
-    <div className="w-72 space-y-4 notch-control border border-edge bg-void/70 p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.14em] text-muted">
-          {t.profile.manage} {character.name}
-        </span>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="text-xs text-muted hover:text-ink"
-        >
-          {t.common.close}
-        </button>
-      </div>
-
-      <form action={updateFormAction} className="space-y-2">
-        <input type="hidden" name="characterId" value={character.id} />
-        <Field label={t.profile.name}>
-          <Input
-            name="characterName"
-            required
-            minLength={2}
-            maxLength={40}
-            defaultValue={character.name}
-          />
-        </Field>
-        <Field label={t.profile.biosuit}>
-          <Input name="biosuit" required maxLength={60} defaultValue={character.biosuit} />
-        </Field>
-        <Field label={t.common.level}>
-          <Input
-            name="level"
-            type="number"
-            min={1}
-            max={999}
-            required
-            defaultValue={character.level}
-          />
-        </Field>
-        <SubmitButton variant="ghost" className="w-full">
-          {t.common.save}
-        </SubmitButton>
-        <FormMessage state={updateState} success={updateState?.ok ? t.profile.saved : null} />
-      </form>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <button type="button" className="btn btn-sm" onClick={() => setEditing('stats')}>
+        {t.vx.edit}
+      </button>
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => setEditing('build')}>
+        ⚔️ Build
+      </button>
 
       {character.kind === 'ALT' && (
-        <>
-          <form action={mainFormAction} className="space-y-2 border-t border-edge pt-3">
+        <button type="button" className="btn btn-muted btn-sm" onClick={() => setOpen((v) => !v)}>
+          {t.profile.manage}
+        </button>
+      )}
+
+      {open && character.kind === 'ALT' && (
+        <div style={{ width: '100%', display: 'grid', gap: 10, marginTop: 6 }}>
+          <form action={mainFormAction}>
             <input type="hidden" name="characterId" value={character.id} />
-            <SubmitButton className="w-full">{t.profile.makeMain}</SubmitButton>
-            <p className="text-[11px] text-muted">
-              {t.profile.makeMainHint}
-            </p>
+            <SubmitButton className="btn-sm">{t.profile.makeMain}</SubmitButton>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '6px 0 0' }}>{t.profile.makeMainHint}</p>
             <FormMessage state={mainState} />
           </form>
-
-          <form action={retireFormAction} className="space-y-2 border-t border-edge pt-3">
+          <form action={retireFormAction}>
             <input type="hidden" name="characterId" value={character.id} />
-            <SubmitButton variant="danger" className="w-full">
+            <SubmitButton variant="danger" className="btn-sm">
               {t.profile.retire}
             </SubmitButton>
             <FormMessage state={retireState} />
           </form>
-        </>
+        </div>
       )}
 
-      {character.kind === 'MAIN' && (
-        <p className="border-t border-edge pt-3 text-[11px] text-muted">
-          {t.profile.mainCannotRetire}
-        </p>
-      )}
+      <CharacterEditModal
+        character={editing ? character : null}
+        isAdmin={false}
+        mode={editing ?? 'stats'}
+        onClose={() => setEditing(null)}
+      />
     </div>
   )
 }

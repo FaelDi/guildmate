@@ -1,41 +1,25 @@
 import type { Metadata } from 'next'
-import { IBM_Plex_Mono, IBM_Plex_Sans, Oxanium } from 'next/font/google'
+import { Rajdhani } from 'next/font/google'
 import { LocaleProvider } from '@/components/locale-provider'
+import { ToastProvider } from '@/components/vx/toast'
 import { dictionaryFor, getLocale } from '@/lib/i18n'
 import './globals.css'
 
 /**
- * Three faces, three jobs. Oxanium is angular enough to read as hardware and
- * is kept to headings and the wordmark; Plex Sans carries the prose; Plex Mono
- * carries every number, because a ledger that does not align in a column is a
- * ledger nobody audits.
- *
- * next/font self-hosts them, so no request leaves the browser for a font.
+ * Rajdhani everywhere: it is the command-center face, squared enough to read
+ * as a game HUD and still legible at table sizes. next/font self-hosts it, so
+ * no request leaves the browser for a font.
  */
-const display = Oxanium({
+const rajdhani = Rajdhani({
   subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-oxanium',
-  display: 'swap',
-})
-
-const body = IBM_Plex_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-plex-sans',
-  display: 'swap',
-})
-
-const mono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  variable: '--font-plex-mono',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-rajdhani',
   display: 'swap',
 })
 
 export const metadata: Metadata = {
-  title: 'GuildMate — Guild Portal',
-  description: 'Guild registry, event scoring, point auctions and the guild store.',
+  title: 'Command Center — GuildMate',
+  description: 'Ranking, builds, loot raffle and boss schedule for the guild.',
   robots: { index: false, follow: false },
 }
 
@@ -43,9 +27,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = await getLocale()
 
   return (
-    <html lang={locale} className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body className="antialiased">
-        <LocaleProvider dictionary={dictionaryFor(locale)}>{children}</LocaleProvider>
+    <html lang={locale} className={rajdhani.variable}>
+      <body className="vx antialiased">
+        <LocaleProvider dictionary={dictionaryFor(locale)}>
+          <ToastProvider>{children}</ToastProvider>
+        </LocaleProvider>
       </body>
     </html>
   )

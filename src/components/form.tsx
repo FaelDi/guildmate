@@ -18,17 +18,13 @@ export function SubmitButton({
   const dictionary = useDictionary()
 
   const variants = {
-    primary: 'border-ore/55 bg-ore/12 text-ore hover:bg-ore/22',
-    ghost: 'border-edge bg-transparent text-muted hover:border-muted/60 hover:text-ink',
-    danger: 'border-slag/50 bg-slag/12 text-slag hover:bg-slag/20',
+    primary: 'btn-success',
+    ghost: 'btn-muted',
+    danger: 'btn-red',
   }[variant]
 
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className={`notch-control inline-flex items-center justify-center border px-4 py-2 font-display text-xs font-semibold uppercase tracking-[0.16em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants} ${className}`}
-    >
+    <button type="submit" disabled={pending} className={`btn ${variants} ${className}`}>
       {pending ? dictionary.common.working : children}
     </button>
   )
@@ -53,7 +49,8 @@ export function FormMessage({
     return (
       <p
         role="alert"
-        className="notch-control border border-slag/45 bg-slag/10 px-3 py-2 text-xs leading-relaxed text-slag"
+        className="toast toast-erro show"
+        style={{ position: 'static', pointerEvents: 'auto' }}
       >
         {/* Denials travel as a stable code; the English text the domain layer
             produced is the fallback for anything not translated yet. */}
@@ -64,7 +61,7 @@ export function FormMessage({
 
   if (!success) return null
   return (
-    <div className="notch-control border border-refined/45 bg-refined/10 px-3 py-2 text-xs leading-relaxed text-refined">
+    <div className="toast toast-sucesso show" style={{ position: 'static' }}>
       {success}
     </div>
   )

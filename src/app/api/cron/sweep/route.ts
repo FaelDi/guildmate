@@ -1,9 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { describeError } from '@/lib/errors'
-import { settleAuctions } from '@/services/auctions'
 import { sweepEvents } from '@/services/events'
-import { expireListings } from '@/services/market'
 
 /**
  * Scheduled reconciliation, invoked by Vercel Cron (see vercel.json).
@@ -39,15 +37,11 @@ async function handle(request: NextRequest) {
 
   try {
     const events = await sweepEvents(now)
-    const auctions = await settleAuctions(now)
-    const listingsExpired = await expireListings(now)
 
     const report = {
       ranAt: now.toISOString(),
       durationMs: Date.now() - started,
       events,
-      auctionsSettled: auctions.settled.length,
-      listingsExpired,
     }
     console.info('[cron] sweep complete', JSON.stringify(report))
     return NextResponse.json(report)

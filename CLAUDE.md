@@ -45,11 +45,16 @@ A guild portal for RF Next players:
 - **Points** live in an **append-only ledger**. They are PENDING until the event reaches its
   minimum participants; if it does not within 48 hours the event is cancelled and every
   point is reversed. Only CONFIRMED points are spendable.
-- **Auctions** are admin-created and paid with points. Only a MAIN character may bid.
-- **The guild store** is member-listed items priced in **diamonds** (the in-game currency),
-  deliberately outside the point economy.
+- **Weeks**: participation = the week's events attended + admin-excused absences. Admins
+  can penalize (a negative ledger row) and reverse a penalty exactly once.
+- **Classes & builds**: combat power + build checklist per character; Mega / Titan rulers.
+  Members edit only their own characters (never the name); admins edit anyone's.
+- **Loot raffle** is admin-published and paid with points: a bet holds points, only the
+  winner pays, staff keep a fixed 15% slice, 90% participation required, MAIN only. The
+  server draws with a CSPRNG and settles in one transaction.
+- **Meme raffle** (no points) and the **boss schedule** (BRT).
 - **Moderation**: logical deactivation (`is_active`), restrictions (ban, suspension, or a
-  narrow block on events/auctions/store), and permanent access revocation.
+  narrow block on events/loot), and permanent access revocation.
 
 Every design decision is shaped by one requirement: **it must be hard to mint points
 fraudulently.**
@@ -212,7 +217,9 @@ Admin-wide actions use `authorizeAdminAction`; moderation additionally uses
 - Points are **append-only**. Never `UPDATE` an `amount`, never `DELETE` a ledger row, never
   add a cached balance column. A correction is a new row carrying the delta.
 - New awards start `PENDING`. They become `CONFIRMED` only through the event reaching quorum.
-  Writing `CONFIRMED` directly mints spendable points — treat it as a P1 bug.
+  Writing a positive `CONFIRMED` row directly mints spendable points — treat it as a P1 bug.
+  The only exceptions are mirrors of an earlier deduction: `LOOT_RELEASE` (of a hold) and
+  `PENALTY_REVERSAL` (of one penalty, once).
 - Every ledger write happens **inside the same transaction** as the thing that justifies it.
 - An admin can never award points to their own account, including through an alt. The check
   is on the owning **user**, not the character.

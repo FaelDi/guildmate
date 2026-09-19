@@ -1,7 +1,8 @@
 # Domain model and anti-fraud rules
 
 Every rule below is implemented as a pure function in `src/lib/rules.ts` and covered by
-`tests/rules.test.ts`. Services call those functions; nothing re-implements them.
+`tests/rules.test.ts` and `tests/vortex-rules.test.ts`. Services call those functions;
+nothing re-implements them.
 
 ---
 
@@ -80,10 +81,12 @@ level.
 
 ### Managing the roster
 
-Members manage their own roster from `/profile`; **admins have no override here**. Which
-character is the MAIN decides where an ALT's points are attributed, so an admin able to
-reshape someone else's roster could redirect attribution without ever touching the ledger.
-Moderation acts on the account, not on the roster.
+Members manage their own roster from `/profile`; **admins have no override on its
+structure** (create, promote, retire). Which character is the MAIN decides where an ALT's
+points are attributed, so an admin able to reshape someone else's roster could redirect
+attribution without ever touching the ledger. Stats and build are the exception: an admin may
+correct level, combat power, class, build and name for anybody in the guild (see *Combat
+power, class and build*).
 
 | Rule | Function | Denial |
 |---|---|---|
@@ -91,7 +94,7 @@ Moderation acts on the account, not on the roster.
 | A second MAIN is refused, retired ones included — they still hold the index slot | `evaluateCharacterCreate` | `MAIN_ALREADY_EXISTS` |
 | Creating the MAIN **adopts** the ALTs that predate it (sign-up allows an ALT first) | `evaluateCharacterCreate` | — |
 | At most 10 characters per account **ever**, retired ones included | `evaluateCharacterCreate` | `ROSTER_FULL` |
-| `kind` is not editable; promotion is its own audited step | `evaluateCharacterUpdate` | — |
+| `kind` is not editable; promotion is its own audited step | `evaluateCharacterStatsUpdate` | — |
 | Promoting an ALT demotes the old MAIN and relinks every other ALT, in one transaction | `evaluateMainSwitch` | `ALREADY_MAIN`, `CHARACTER_INACTIVE` |
 | A MAIN is never retirable directly — promote a successor first | `evaluateCharacterRetire` | `MAIN_CANNOT_RETIRE` |
 | An account always keeps at least one live character | `evaluateCharacterRetire` | `LAST_CHARACTER` |
@@ -126,7 +129,7 @@ Three independent mechanisms, deliberately not collapsed into one flag:
 | Mechanism | Column / table | Meaning | Reversible |
 |---|---|---|---|
 | Logical deactivation | `users.is_active` | Not punitive. No sign-in, history kept. | Yes |
-| Restriction | `user_restrictions` | `BAN`, `SUSPENSION`, or a narrow `NO_EVENTS` / `NO_AUCTION` / `NO_MARKET` block. Timed or permanent. | Yes, by revoking |
+| Restriction | `user_restrictions` | `BAN`, `SUSPENSION`, or a narrow `NO_EVENTS` / `NO_LOOT` block. Timed or permanent. | Yes, by revoking |
 | Permanent revocation | `users.deleted_at` | Access removed for good. The row survives so the ledger and audit trail stay intact. | No |
 
 `users.status` is a **derived cache** of the above (`deriveUserStatus`). Access is decided
@@ -225,8 +228,10 @@ available = SUM(amount) WHERE state = 'CONFIRMED'
 | `EVENT_AWARD` | a registration | + |
 | `EVENT_ADJUSTMENT` | the event was re-scored | ± |
 | `ADMIN_ADJUSTMENT` | a manual correction | ± |
-| `AUCTION_HOLD` | a bid locks points | − |
-| `AUCTION_RELEASE` | outbid, or the auction was cancelled | + |
+| `LOOT_HOLD` | a loot bet locks points | − |
+| `LOOT_RELEASE` | the bet lost, was withdrawn, or the banner closed | + |
+| `PENALTY` | an admin deducts points | − |
+| `PENALTY_REVERSAL` | one penalty undone, once, for exactly its amount | + |
 
 There is deliberately **no cached balance column**. A reversal cannot leave a stale total
 behind if there is no total to go stale.
@@ -239,13 +244,13 @@ delta row per live registration**, inheriting each registration's state. That is
 registrations are skipped.
 
 A downward change can push a balance negative if the member already committed the points to
-a bid. That is intentional: the balance stays honest and `evaluateBid` simply refuses new
-bids until it recovers.
+a loot bet. That is intentional: the balance stays honest and `evaluateLootBet` simply
+refuses new bets until it recovers.
 
 ### Alt rollup
 
 Points earned by an ALT are credited to the account and attributed to its MAIN character, so
-the leaderboard and the auction eligibility check agree. A guild can switch this off with
+the ranking and the loot eligibility check agree. A guild can switch this off with
 `alt_points_policy = 'NO_CREDIT'`, which blocks ALTs from registering at all.
 
 The rollup is only as good as the link: an ALT with a null `main_character_id` falls back to
@@ -254,37 +259,92 @@ creating a MAIN adopts the ones that predate it.
 
 ---
 
-## Auctions (points)
+## Weeks and participation
 
-Admin-created, paid with **confirmed** points.
+The guild runs in weeks (`guild_weeks`). An admin opens the next one (`evaluateWeekAdvance`,
+refused within an hour of the last so a double click cannot burn a week).
 
-- **Only a MAIN character may bid** (`evaluateBid`).
-- A bid inserts an `AUCTION_HOLD` for the negative amount, so the same points cannot back
-  two simultaneous bids. Being outbid appends a matching `AUCTION_RELEASE`. Winning simply
-  leaves the hold in place — that is the spend.
-- The auction row is locked (`SELECT ... FOR UPDATE`) for the whole bid transaction, so two
-  concurrent bids cannot both read the same standing price and both win.
-- **Anti-sniping**: a bid inside the closing window pushes `ends_at` forward by
-  `auction_anti_snipe_seconds` (`applyAntiSnipe`).
-- Pending points are never spendable, so a bid can never be funded by an event that is one
-  registration away from being cancelled.
+**Weekly participation** (`computeParticipation`) = (events attended + events excused) /
+events held this week, capped at 100%, one decimal. Events the member **created** are not
+counted against them — a creator can never redeem their own code. A week with no events is
+100%. Cancelled events and reversed registrations do not count.
 
----
+An **excused absence** (`evaluateExcuse`) credits N events as attended for this week. It
+never awards points. It is an admin power and **never on the admin's own account**: it raises
+participation, and participation is the gate to loot bets.
 
-## The guild store (diamonds)
+## Penalties
 
-Members advertise their own items: name, type, rarity, item level, quantity, and a price in
-**diamonds**.
+A **penalty** (`evaluatePenalty`) is a `PENALTY` ledger row, negative and CONFIRMED. A
+**reversal** (`evaluatePenaltyReversal`) credits exactly what one penalty took, exactly once
+(the penalty row is locked while the reversal is checked), and never to the admin doing it —
+otherwise "penalize, then reverse twice" would mint. Neither is allowed on one's own account.
 
-Diamonds are the in-game currency and are deliberately **not** tracked as a balance. The
-portal is a classifieds board; the trade happens in game. Keeping diamonds out of the ledger
-is what stops the store from becoming a second, unauditable economy alongside event points.
+## Combat power, class and build
 
-- A member may only create, edit or withdraw **their own** listings (`authorizeResource`);
-  admins can also act, for moderation.
-- Any character may list, including an ALT — the main-only rule applies to spending points,
-  not to selling gear.
-- Listings expire after 30 days and are swept by the cron.
+Each character carries a self-reported `combat_power`, a class (the `biosuit` column) and a
+build checklist. **Only the owner or an admin of the same guild edits them**
+(`evaluateCharacterStatsUpdate`); **only an admin renames**. None of these touch the ledger,
+but combat power decides the loot tiers:
+
+| Tier | Rule (`classifyCombatPower`) |
+|---|---|
+| Mega | `combat_power >= mega_cp_threshold` |
+| Titan | `combat_power >= titan_cp_threshold` |
+
+A threshold of 0 switches that tier off; Titan may never be set above Mega
+(`evaluateThresholdUpdate`).
+
+## The loot raffle (points)
+
+An admin publishes a **banner** (`evaluateLootBannerCreate`): a title, a deadline (or none)
+and 1–20 items, each with a per-bet cap and a tier restriction (`ALL`, `TITAN`+ or `MEGA`).
+One open banner per guild.
+
+A **bet** (`evaluateLootBet`) is refused unless every one of these holds:
+
+- the account may act and is not under `NO_LOOT`;
+- it is placed with the caller's **MAIN** — the service picks it, the form never names a
+  character;
+- the banner is open and its deadline has not arrived (the instant it arrives, bets stop);
+- the item is still open and in the caller's guild and banner;
+- weekly participation ≥ `loot_min_participation_pct` (90% by default);
+- the caller's tier meets the item restriction;
+- no other live bet by this account on this item;
+- a positive whole number, at most the item cap, at most the **confirmed** balance.
+
+The bet writes a `LOOT_HOLD` for the negative amount inside the same transaction, with the
+bettor's `users` row locked first, so the same points can never back two bets. Withdrawing
+(`evaluateBetWithdrawal`: owner while bets are open, an admin until the draw) writes the
+mirror `LOOT_RELEASE`.
+
+**The wheel** (`buildLootWheel`): the chosen staff member gets a fixed
+`loot_staff_share_pct` (15%) slice; the rest is split between the bets in proportion to their
+points, however few points are on the table. With no staff picked, the bettors share 100%.
+
+**The draw** (`evaluateLootDraw`, `pickWheelSlice`): admin only, never by an admin who bet on
+the item, and the staff slice must belong to an admin of the guild. The roll comes from the
+CSPRNG on the server and the whole draw settles in one transaction — the winner's hold stays
+(that is the price, **only the winner pays**), every other bet is released — so there is no
+"spin again". The wheel is persisted on the item, and every open screen replays the same
+spin through `/api/loot/live`.
+
+Closing a banner cancels every undrawn item and releases all of its bets. Permanently
+revoking a member releases their live bets.
+
+## The meme raffle
+
+Points-free. An admin picks active mains of the guild (`evaluateMemeDraw`); the server picks
+one uniformly with the CSPRNG (`pickUniformIndex`). History can be annotated or deleted.
+
+## Boss schedule
+
+Reference data, admin-edited. Every spawn time is computed by `nextSpawn` in **BRT (UTC−3,
+no daylight saving)**: an `INTERVAL` boss rolls its anchor forward by whole cycles (a boss
+spawning exactly now is a full cycle away); `DAILY` takes the next of its times today or
+tomorrow; `WEEKLY` the next listed weekday and time. `validateBossSchedule` normalises input
+and drops fields a kind does not use. A boss in a group follows the group
+(`resolveBossSchedule`). The schedule page counts down on the client from the same function.
 
 ---
 

@@ -6,7 +6,7 @@ This is the central architectural boundary, and the reason there is **no
 `NEXT_PUBLIC_SUPABASE_*` variable anywhere in this repository**.
 
 ```
-browser ──► our Next.js server ──► Supabase (Postgres / Auth / Storage)
+browser ──► our Next.js server ──► Supabase (Postgres / Auth)
         (cookies, own origin)   (publishable + secret keys, never leave here)
 ```
 
@@ -14,34 +14,26 @@ browser ──► our Next.js server ──► Supabase (Postgres / Auth / Stora
 |---|---|
 | Database | `src/db` imports `server-only`. Queries run in server components, server actions and route handlers. Drizzle over a direct Postgres connection — there is no PostgREST call to proxy. |
 | Auth | Sign-in, sign-up and refresh call GoTrue **from our server** (`src/lib/supabase-auth.ts`). The browser receives only httpOnly cookies on our own origin. |
-| Storage | `/api/storage/*` streams objects through our origin after checking the caller. |
 
 What this buys: no Supabase key in the browser bundle, the project URL is not discoverable
 from the client, tokens are unreadable to page JavaScript (so XSS cannot exfiltrate a
 session), and because every sign-in passes through us, our own per-account lockout is
 actually enforceable on top of GoTrue's rate limiting.
 
-### Why the storage proxy is deny-by-default
+### No pass-through proxy
 
-`SUPABASE_SECRET_KEY` (legacy: `SUPABASE_SERVICE_ROLE_KEY`) **bypasses row level security**. A generic pass-through proxy
-carrying that key would be strictly worse than letting the browser call Supabase directly:
-any signed-in member could read or write any table through it.
+`SUPABASE_SECRET_KEY` (legacy: `SUPABASE_SERVICE_ROLE_KEY`) **bypasses row level security**. A
+generic pass-through carrying that key would be strictly worse than letting the browser call
+Supabase directly, so there is none: domain data goes through server actions, and the only
+routes are the fail-closed cron sweep and `/api/loot/live`, which reads the caller's own
+guild from the session. (The item-screenshot storage proxy left with the guild store.)
 
-So `/api/storage/*` is not a pass-through. It:
+### Google Translate
 
-- requires an authenticated session;
-- accepts only object keys of the exact shape the app writes,
-  `guild/<guildId>/user/<ownerId>/<uuid>.<ext>` (`parseObjectKey` rejects traversal,
-  absolute paths, doubled separators and any other extension);
-- decides authorization **from the key**: reads are scoped to the caller's guild, deletes
-  require the uploader or an admin;
-- never lets the client choose the key on upload — it is generated inside the caller's own
-  namespace;
-- sniffs magic bytes rather than trusting the declared content type, and caps size;
-- returns 404 rather than 403 for another guild's object, so it is not an existence oracle.
-
-Anything not on that list is not proxied. Domain data goes through server actions, which are
-already a server-side boundary.
+The language selector loads Google's translate script **only after a visitor picks a
+language other than Portuguese**. It then rewrites the rendered page in the browser, so the
+text on screen reaches Google. It cannot read the session: both auth cookies are httpOnly.
+A visitor who never picks another language never loads the script.
 
 ## Authorization
 
@@ -61,22 +53,20 @@ A role check is never enough. Every read or mutation of a member-owned row calls
 `authorizeResource` in the **service layer**, after the row is loaded:
 
 ```ts
-const [listing] = await tx.select().from(marketListings).where(eq(marketListings.id, id))
-if (!listing) throw new AppError('NOT_FOUND', 'Listing not found', 404)
-unwrap(authorizeResource({
-  actor,
-  ownerUserId: listing.sellerUserId,
-  resourceGuildId: listing.guildId,
-}))
+const [bet] = await tx.select().from(lootBets).where(eq(lootBets.id, betId)).limit(1).for('update')
+if (!bet || bet.guildId !== actor.guildId) throw new AppError('NOT_FOUND', 'Not found', 404)
+unwrap(evaluateBetWithdrawal({ actor, bet, item, banner, now })) // authorizeResource inside
 ```
 
 Ids arriving in a `FormData` are attacker-controlled and re-authorized server-side. Guild
 scoping is checked alongside ownership, so an admin of one guild cannot reach another.
 
-**The roster is the one place admins get no override** (`allowAdminOverride: false` in
-`src/services/characters.ts`). Which character is the MAIN decides where an ALT's points are
-attributed, so an admin able to reshape another member's roster could redirect attribution
-without ever writing to the ledger. Moderation acts on the account, not on the roster.
+**The roster structure is the one place admins get no override**: creating, promoting and
+retiring characters is owner-only (`ownsRoster` in the rules). Which character is the MAIN
+decides where an ALT's points are attributed, so an admin able to reshape another member's
+roster could redirect attribution without ever writing to the ledger. Character **stats**
+(level, combat power, class, build) are owner-or-admin, and only an admin renames
+(`evaluateCharacterStatsUpdate`).
 
 ### Privilege escalation
 
@@ -94,8 +84,11 @@ or above their own.
 | Code shared outside the raid | Admin-chosen lifetime, capped by guild settings; codes can be rotated instantly. |
 | Spending points from an event about to be cancelled | Only `CONFIRMED` points are spendable; awards are `PENDING` until quorum. |
 | Code brute force | 8 characters from a 32-symbol alphabet, hashed with a server-side pepper, plus per-account rate limiting on redemption. |
-| Sniping an auction | `applyAntiSnipe` extends the clock on a late bid. |
-| Double-spending points across two bids | The bidder's own row is locked **first**, then the auction: the hold alone did not stop the same balance funding two simultaneous bids on different auctions. |
+| Double-spending points across two loot bets | The bettor's own `users` row is locked **first**, then the item: the same balance cannot fund two simultaneous bets on different items. A partial unique index allows one live bet per account per item. |
+| Re-rolling a loot draw | The CSPRNG roll and the settlement happen in one transaction; the wheel is persisted. There is no endpoint that accepts a client-side result. |
+| Admin drawing an item they bet on | `evaluateLootDraw` refuses; another admin must draw it. |
+| Admin excusing or un-penalizing themselves | `evaluateExcuse` and `evaluatePenaltyReversal` refuse the admin's own account; a penalty is reversible exactly once, for exactly its amount. |
+| Inflating combat power to unlock Mega items | Self-reported and visible to the whole guild on two boards; any admin can correct it, and every edit is audited. |
 | Admin invents an event and pays himself | Two controls, because there are two doors: `evaluateRegistration` refuses the event's creator, and `resolveEventQuorum` makes the guild quorum a floor so a quorum of 1 cannot be set. |
 | Colluding accounts | IP and user-agent fingerprints (hashed, never raw) recorded per registration and surfaced in the admin log. |
 
@@ -132,6 +125,10 @@ and change `ssl` to `{ rejectUnauthorized: true }` in `src/db/index.ts`.
   across cold starts can exceed the nominal limit. The controls that must hold globally are
   also enforced in the database (the per-account lockout, the per-event unique index). Move
   to Upstash Redis for a hard global limit — it is on the backlog.
+- **Combat power is self-reported.** It gates the Mega/Titan loot tiers, so a member can
+  claim a tier they have not reached. The control is social and after the fact: the value
+  is public on the ranking and classes boards, admins can correct it, and the audit log
+  records every edit.
 - **Row level security is not used.** All access goes through the server, which enforces
   authorization in the service layer. If you ever expose PostgREST to clients, RLS becomes
   mandatory and none of it is written yet.
@@ -149,5 +146,5 @@ and change `ssl` to `{ rejectUnauthorized: true }` in `src/db/index.ts`.
   is taken on trust. Turning confirmation on without working SMTP would lock everybody out,
   so it stays a deliberate deployment decision.
 - **Cancelling an already-confirmed event can push a balance negative** if the member spent
-  the points. This is deliberate — the balance stays honest and bidding is blocked until it
+  the points. This is deliberate — the balance stays honest and betting is blocked until it
   recovers — and requires an explicit `force` flag.

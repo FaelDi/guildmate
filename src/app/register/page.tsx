@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { JoinGuildForm } from '@/components/join-guild-form'
-import { LocaleSwitch } from '@/components/locale-switch'
+import { PublicHeader } from '@/components/vx/public-header'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
 import { listGuildDirectory } from '@/services/accounts'
@@ -32,13 +32,9 @@ export default async function RegisterPage({
   )
 
   return (
-    <main className="mx-auto grid min-h-dvh max-w-5xl grid-cols-1 items-start gap-8 px-6 py-16 lg:grid-cols-[1fr_1fr]">
-      <div className="flex items-center justify-between lg:col-span-2">
-        <Link href="/" className="font-mono text-[11px] uppercase tracking-[0.3em] text-ore">
-          GuildMate
-        </Link>
-        <LocaleSwitch />
-      </div>
+    <main>
+      <PublicHeader signInLabel={t.vx.memberAccess} joinLabel={t.auth.createAccount} />
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
 
       <Panel
         title={liveInvite ? `${t.recruit.joinTitle} ${liveInvite.guildName}` : t.auth.joinTitle}
@@ -101,6 +97,7 @@ export default async function RegisterPage({
           </Table>
         )}
       </Panel>
+      </div>
     </main>
   )
 }

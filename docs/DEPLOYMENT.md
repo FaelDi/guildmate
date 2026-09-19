@@ -34,7 +34,7 @@ Copy `.env.example` to `.env.local` for development, and set the same keys in
 | `SUPABASE_SECRET_KEY` | Admin API and Storage. **Bypasses RLS.** Server only |
 | `SUPABASE_JWKS_URL` | Optional. Defaults to `<SUPABASE_URL>/auth/v1/.well-known/jwks.json` |
 | `SUPABASE_JWT_SECRET` | Optional. **Leave empty** unless the project signs JWTs symmetrically |
-| `SUPABASE_STORAGE_BUCKET` | Bucket for item screenshots |
+| `SUPABASE_STORAGE_BUCKET` | Unused since the store was removed. Safe to leave unset |
 | `CRON_SECRET` | Bearer token Vercel Cron sends. `openssl rand -hex 32` |
 | `EVENT_CODE_PEPPER` | Mixed into event codes, invite tokens and fingerprints. **At least 32 characters, and the app refuses to boot in production without it.** `openssl rand -hex 32` |
 
@@ -74,11 +74,17 @@ frozen at `0000_init` — every migration after that still goes through drizzle-
 For a throwaway environment `npm run db:push` syncs the schema without a migration file.
 Never use `db:push` against production.
 
-## 4. Create the storage bucket (optional)
+## 4. Mock data (optional)
 
-Only needed if you enable item screenshots. In **Storage**, create a bucket matching
-`SUPABASE_STORAGE_BUCKET` and leave it **private** — the app streams objects through
-`/api/storage/*` after checking the caller, so public access would defeat the proxy.
+To see every command-center screen populated, fill a guild with fictional members, events,
+penalties, loot (a drawn history plus an open banner), meme raffles and a boss schedule:
+
+```bash
+npm run db:seed:mock -- <guild-slug>
+```
+
+Mock members have `@guildmate.invalid` addresses and no Supabase credential, so nobody can
+sign in as them. The script refuses to run twice on the same guild.
 
 ## 4b. Create the first guild
 
@@ -122,8 +128,7 @@ vercel --prod
 ## 6. What the sweep does
 
 Every run: confirms events that reached quorum, cancels events that missed it past the
-deadline (reversing every point), closes join windows that elapsed, settles ended auctions,
-and expires stale store listings. It is idempotent — running it twice changes nothing the
+deadline (reversing every point) and closes join windows that elapsed. It is idempotent — running it twice changes nothing the
 second time.
 
 Verify it manually:
