@@ -1,10 +1,12 @@
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { IssueInviteForm, RevokeInviteButton } from '@/components/invite-admin'
+import { CreateGuildPanel } from '@/components/vx/create-guild-panel'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { describeInviteStatus } from '@/lib/rules'
 import { getDictionary } from '@/lib/i18n'
-import { requireSession } from '@/lib/session'
+import { requireSessionPage } from '@/lib/session'
+import { getPrimaryGuild, listGuilds } from '@/services/guilds'
 import { listInvites } from '@/services/invites'
 
 export const dynamic = 'force-dynamic'
@@ -14,17 +16,47 @@ function stamp(value: Date | null): string {
 }
 
 export default async function InvitesPage() {
-  const { actor, now } = await requireSession()
+  const { actor, now } = await requireSessionPage()
   // Not a redirect: a member has no business learning that this screen exists.
   if (actor.role !== 'SUPER_ADMIN') notFound()
 
-  const invites = await listInvites(actor)
+  const [invites, allGuilds, primary] = await Promise.all([
+    listInvites(actor),
+    listGuilds(),
+    getPrimaryGuild(),
+  ])
   const t = await getDictionary()
   const headerList = await headers()
   const origin = `https://${headerList.get('host') ?? 'localhost:3000'}`
 
   return (
     <div className="space-y-6">
+      <CreateGuildPanel origin={origin} />
+
+      <Panel title={t.vx.guildsTitle} subtitle={t.vx.guildsHint}>
+        <Table head={t.vx.guildsHead}>
+          {allGuilds.map((guild) => (
+            <tr key={guild.id}>
+              <td style={{ color: '#fff', fontWeight: 700 }}>
+                {guild.name}
+                {guild.tag && <span style={{ color: 'var(--text-muted)' }}> [{guild.tag}]</span>}
+              </td>
+              <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{guild.slug}</td>
+              <td>
+                {guild.id === primary?.id ? (
+                  <Badge value="PRIMARY">{t.vx.primaryGuild}</Badge>
+                ) : (
+                  <Badge value={guild.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                )}
+              </td>
+              <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+                {stamp(guild.createdAt)}
+              </td>
+            </tr>
+          ))}
+        </Table>
+      </Panel>
+
       <Panel
         title={t.invite.adminIssueTitle}
         subtitle={t.invite.adminIssueSubtitle}

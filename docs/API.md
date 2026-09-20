@@ -21,7 +21,7 @@ one, with the detail logged server-side.
 | Action | Auth | Notes |
 |---|---|---|
 | `signInAction` | public | Calls GoTrue server-side, sets httpOnly cookies. One generic failure message |
-| `registerAction` | public, or a recruitment token | Creates the Supabase credential + the domain row + the first character. `guildSlug` is required only without a token: with one the guild comes from the link (a slug sent alongside is ignored), and a seat is spent in the same transaction |
+| `registerAction` | public, or a recruitment token | Creates the Supabase credential + the domain row + the first character. No guild is posted: an open sign-up joins the primary guild and lands `PENDING` (no session until an admin approves); with a token the guild comes from the link, the account arrives approved, a seat is spent in the same transaction, and a leader link makes it that guild's LEADER |
 | `createGuildAction` | invite token | Spends a guild invite and creates the guild, its first `LEADER` and that leader's main character. The only path that creates a guild |
 | `signOutAction` | session | Revokes the refresh token and clears cookies |
 
@@ -31,6 +31,7 @@ one, with the detail logged server-side.
 |---|---|---|
 | `issueInviteAction` | super admin | **Returns the link once.** Only its digest is stored |
 | `revokeInviteAction` | super admin | Kills a live invite. A spent one cannot be revoked |
+| `createGuildAction` | super admin | Creates another guild on this deployment and **returns its single-use leader link once** |
 
 Minting an invite is not a guild-admin power: it creates a guild *outside* any existing one,
 so a leader able to do it could spawn guilds forever. The first invite on a fresh database
@@ -106,6 +107,8 @@ row it loads.
 
 | Action | Auth | Notes |
 |---|---|---|
+| `approveMemberAction` | leader or super admin | Lets a pending sign-up in. Never your own account |
+| `rejectMemberAction` | leader or super admin | Closes a pending sign-up and bans its credential |
 | `setMemberActiveAction` | admin | Logical deactivation / reactivation |
 | `applyRestrictionAction` | admin | Ban, suspension or a narrow block. `durationDays: 0` = permanent |
 | `revokeRestrictionAction` | admin | Lifts the Supabase Auth ban too, if nothing else holds it |

@@ -35,6 +35,7 @@ Copy `.env.example` to `.env.local` for development, and set the same keys in
 | `SUPABASE_JWKS_URL` | Optional. Defaults to `<SUPABASE_URL>/auth/v1/.well-known/jwks.json` |
 | `SUPABASE_JWT_SECRET` | Optional. **Leave empty** unless the project signs JWTs symmetrically |
 | `SUPABASE_STORAGE_BUCKET` | Unused since the store was removed. Safe to leave unset |
+| `PRIMARY_GUILD_SLUG` | Slug of the guild this deployment is for. Optional: defaults to the oldest guild |
 | `CRON_SECRET` | Bearer token Vercel Cron sends. `openssl rand -hex 32` |
 | `EVENT_CODE_PEPPER` | Mixed into event codes, invite tokens and fingerprints. **At least 32 characters, and the app refuses to boot in production without it.** `openssl rand -hex 32` |
 
@@ -85,6 +86,17 @@ npm run db:seed:mock -- <guild-slug>
 
 Mock members have `@guildmate.invalid` addresses and no Supabase credential, so nobody can
 sign in as them. The script refuses to run twice on the same guild.
+
+## 4a. The guild this deployment belongs to
+
+The site is one guild's: its name titles the pages and its board is what a
+visitor sees before signing in. Set `PRIMARY_GUILD_SLUG` to that guild's slug,
+or leave it unset and the oldest guild is used.
+
+Other guilds can still exist on the same install - the schema is multi-tenant.
+Only the **super admin** creates them, from *Convites* in the admin area: the
+guild is created there and comes with a single-use **leader link**, which is
+how it gets its first admin without anybody leaving their own guild.
 
 ## 4b. Create the first guild
 

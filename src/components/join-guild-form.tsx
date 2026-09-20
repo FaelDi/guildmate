@@ -5,77 +5,68 @@ import { registerAction } from '@/app/actions/auth'
 import { CharacterFields } from '@/components/character-fields'
 import { FormMessage, SubmitButton } from '@/components/form'
 import { useDictionary } from '@/components/locale-provider'
-import { Field, Input, Select } from '@/components/ui'
-
-export type JoinableGuild = { slug: string; name: string; tag: string | null }
+import { Field } from '@/components/ui'
 
 /**
- * Signing up into an existing guild.
+ * Signing up.
  *
- * The guild is picked from the directory rather than typed: a slug typo used
- * to fail with "that guild does not exist or is not accepting members", which
- * is honest but useless. Guilds that stopped accepting members are not in the
- * list at all, so the choice cannot be wrong.
+ * There is no guild picker: this deployment belongs to one guild and an open
+ * sign-up joins it, waiting for an admin to approve. A recruitment link names
+ * its own guild instead - and the server reads the guild from the link, never
+ * from anything this form could post.
  */
 export function JoinGuildForm({
-  guilds,
   invite,
 }: {
-  guilds: JoinableGuild[]
   /** Set when the visitor arrived through a recruitment link. */
   invite?: { token: string; guildName: string } | null
 }) {
   const [state, formAction] = useActionState(registerAction, null)
   const t = useDictionary()
 
-  if (!invite && guilds.length === 0) {
-    return (
-      <p className="text-sm leading-relaxed text-muted">
-        {t.auth.noGuildsYet}
-      </p>
-    )
-  }
-
   return (
-    <form action={formAction} className="space-y-4">
-      {invite ? (
-        // The link decided the guild; showing a picker would imply otherwise.
+    <form action={formAction} style={{ display: 'grid', gap: 12 }}>
+      {invite && (
         <>
           <input type="hidden" name="token" value={invite.token} />
           <Field label={t.common.guild}>
-            <p className="notch-control border border-ore/45 bg-ore/10 px-3 py-2 text-sm text-ore">
+            <p
+              style={{
+                border: '1px solid var(--neon-orange)',
+                background: 'rgba(255,170,0,0.1)',
+                color: 'var(--neon-orange)',
+                padding: '8px 12px',
+                fontSize: 16,
+                margin: 0,
+              }}
+            >
               {invite.guildName}
             </p>
           </Field>
         </>
-      ) : (
-        <Field label={t.common.guild}>
-          <Select name="guildSlug" required defaultValue={guilds[0]?.slug}>
-            {guilds.map((guild) => (
-              <option key={guild.slug} value={guild.slug}>
-                {guild.name}
-                {guild.tag ? ` [${guild.tag}]` : ''}
-              </option>
-            ))}
-          </Select>
-        </Field>
       )}
 
       <Field label={t.common.email}>
-        <Input name="email" type="email" required autoComplete="email" />
+        <input name="email" type="email" required autoComplete="email" className="input-edit" style={{ textAlign: 'left' }} />
       </Field>
 
       <Field label={t.common.password} hint={t.auth.passwordHint}>
-        <Input name="password" type="password" required minLength={10} autoComplete="new-password" />
+        <input
+          name="password"
+          type="password"
+          required
+          minLength={10}
+          autoComplete="new-password"
+          className="input-edit"
+          style={{ textAlign: 'left' }}
+        />
       </Field>
 
-      <div className="border-t border-edge pt-4">
-        <CharacterFields />
-      </div>
+      <CharacterFields />
 
-      <FormMessage state={state} />
+      <FormMessage state={state} success={state?.ok ? t.vx.signedUp : null} />
 
-      <SubmitButton className="w-full">{t.auth.createAccount}</SubmitButton>
+      <SubmitButton>{t.auth.createAccount}</SubmitButton>
     </form>
   )
 }

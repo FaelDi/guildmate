@@ -6,7 +6,13 @@ import { classifyCombatPower } from '@/lib/rules'
 import { BUILD_KEYS, CharacterEditModal, type EditableCharacter } from './character-edit'
 import { CLASSES, formatNumber } from './format'
 
-export type ClassRow = EditableCharacter & { userId: string }
+/** Null for a visitor: class, build and combat power are members-only. */
+export type ClassRow = {
+  mainId: string
+  userId: string
+  name: string
+  details: Omit<EditableCharacter, 'id' | 'name'> | null
+}
 
 const BUILD_COLORS: Record<string, string> = {
   skill4: '#ffaa00',
@@ -27,7 +33,8 @@ export function ClassesBoard({
   thresholds,
 }: {
   rows: ClassRow[]
-  meId: string
+  /** Null when nobody is signed in. */
+  meId: string | null
   isAdmin: boolean
   thresholds: { megaCpThreshold: number; titanCpThreshold: number }
 }) {
@@ -36,12 +43,13 @@ export function ClassesBoard({
   const [editing, setEditing] = useState<EditableCharacter | null>(null)
 
   const visible = useMemo(
-    () => (filter === 'ALL' ? rows : rows.filter((r) => r.biosuit === filter)),
+    () => (filter === 'ALL' ? rows : rows.filter((r) => r.details?.biosuit === filter)),
     [rows, filter],
   )
 
   const highlights = rows
-    .map((row) => ({ row, tier: classifyCombatPower(row.combatPower, thresholds) }))
+    .filter((row) => row.details !== null)
+    .map((row) => ({ row, tier: classifyCombatPower(row.details?.combatPower ?? 0, thresholds) }))
     .filter((h) => h.tier !== 'NONE')
 
   return (
@@ -80,12 +88,12 @@ export function ClassesBoard({
       {filter === 'ALL' && highlights.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', marginBottom: 15 }}>
           {highlights.map(({ row, tier }) => (
-            <div key={row.id} className={`banner-destaque ${tier === 'MEGA' ? 'banner-mega' : 'banner-tita'}`}>
+            <div key={row.mainId} className={`banner-destaque ${tier === 'MEGA' ? 'banner-mega' : 'banner-tita'}`}>
               <div className="icone">{tier === 'MEGA' ? '⭐' : '⚔️'}</div>
               <div>
                 <div className="nome">{row.name}</div>
-                <div className="classe">{row.biosuit || t.noClass}</div>
-                <div className="cp">{formatNumber(row.combatPower)}</div>
+                <div className="classe">{row.details?.biosuit || t.noClass}</div>
+                <div className="cp">{formatNumber(row.details?.combatPower ?? 0)}</div>
               </div>
             </div>
           ))}
@@ -117,12 +125,15 @@ export function ClassesBoard({
               </tr>
             )}
             {visible.map((row, index) => {
-              const tier = classifyCombatPower(row.combatPower, thresholds)
+              const details = row.details
+              const tier = details ? classifyCombatPower(details.combatPower, thresholds) : 'NONE'
               const glow = tier === 'MEGA' ? 'mega-glow' : tier === 'TITAN' ? 'tita-glow' : ''
-              const mine = row.userId === meId
+              const mine = meId !== null && row.userId === meId
               return (
-                <tr key={row.id} className={glow}>
-                  <td style={{ color: 'var(--text-muted)', fontWeight: 'bold', fontSize: 20 }}>{index + 1}</td>
+                <tr key={row.mainId} className={glow}>
+                  <td style={{ color: 'var(--text-muted)', fontWeight: 'bold', fontSize: 20 }}>
+                    {index + 1}
+                  </td>
                   <td
                     className="left"
                     style={{ fontWeight: 700, fontSize: 20, color: mine ? 'var(--neon-green)' : '#fff' }}
@@ -130,32 +141,52 @@ export function ClassesBoard({
                     {row.name}
                   </td>
                   <td>
-                    <span style={{ color: 'var(--neon-cyan)', fontWeight: 'bold', fontSize: 18 }}>
-                      {row.biosuit || t.noClass}
-                    </span>
+                    {details ? (
+                      <span style={{ color: 'var(--neon-cyan)', fontWeight: 'bold', fontSize: 18 }}>
+                        {details.biosuit || t.noClass}
+                      </span>
+                    ) : (
+                      <span title={t.restrictedCell} style={{ color: 'var(--text-muted)' }}>
+                        {t.restricted}
+                      </span>
+                    )}
                   </td>
                   {BUILD_KEYS.map((key) => (
                     <td key={key} style={{ color: BUILD_COLORS[key], fontWeight: 'bold', fontSize: 22 }}>
-                      {row.build[key] ? '✓' : '-'}
+                      {details ? (
+                        details.build[key] ? (
+                          '✓'
+                        ) : (
+                          '-'
+                        )
+                      ) : (
+                        <span title={t.restrictedCell} style={{ color: 'var(--text-muted)' }}>
+                          🔒
+                        </span>
+                      )}
                     </td>
                   ))}
                   <td
                     style={{
-                      color: 'var(--neon-green)',
+                      color: details ? 'var(--neon-green)' : 'var(--text-muted)',
                       fontFamily: 'var(--font-mono)',
                       fontSize: 20,
                       fontWeight: 'bold',
                     }}
                   >
-                    {formatNumber(row.combatPower)}
+                    {details ? (
+                      formatNumber(details.combatPower)
+                    ) : (
+                      <span title={t.restrictedCell}>{t.restricted}</span>
+                    )}
                   </td>
                   <td>
-                    {mine || isAdmin ? (
+                    {details && (mine || isAdmin) ? (
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
                         style={{ borderColor: 'var(--neon-cyan)', color: 'var(--neon-cyan)' }}
-                        onClick={() => setEditing(row)}
+                        onClick={() => setEditing({ id: row.mainId, name: row.name, ...details })}
                       >
                         {t.edit}
                       </button>

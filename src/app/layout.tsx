@@ -3,6 +3,7 @@ import { Rajdhani } from 'next/font/google'
 import { LocaleProvider } from '@/components/locale-provider'
 import { ToastProvider } from '@/components/vx/toast'
 import { dictionaryFor, getLocale } from '@/lib/i18n'
+import { getPrimaryGuild } from '@/services/guilds'
 import './globals.css'
 
 /**
@@ -17,10 +18,18 @@ const rajdhani = Rajdhani({
   display: 'swap',
 })
 
-export const metadata: Metadata = {
-  title: 'Command Center — GuildMate',
-  description: 'Ranking, builds, loot raffle and boss schedule for the guild.',
-  robots: { index: false, follow: false },
+/**
+ * The site is named after the guild it belongs to, so the title is resolved
+ * per request rather than hard-coded. A deployment with no guild yet still
+ * renders, which is what the fallback is for.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const guild = await getPrimaryGuild()
+  return {
+    title: guild ? `${guild.name} Command Center` : 'Command Center',
+    description: 'Ranking, builds, loot raffle and boss schedule for the guild.',
+    robots: { index: false, follow: false },
+  }
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -6,10 +6,45 @@ nothing re-implements them.
 
 ---
 
-## Guilds are created from an invite
+## One guild, with room for others
 
-A guild exists only because somebody spent an invite. There is no other code path that
-inserts into `guilds`.
+A deployment belongs to one guild - the **primary** one (`PRIMARY_GUILD_SLUG`, falling back
+to the oldest). Its board is the public front page and its name titles the site. An open
+sign-up joins that guild; a slug in the request is ignored, so nobody can steer themselves
+into another guild that happens to be open.
+
+Other guilds can exist on the same install, and only a **super admin** creates them
+(`evaluateGuildCreate`). This is not a guild-admin power: a second guild is a second tenant,
+and a leader able to mint tenants could spawn them forever. The new guild is created empty
+and comes with a single-use **leader link** - a `member_invites` row with
+`grants_role = 'LEADER'`, which only a super admin may issue - so the creator never has to
+leave their own guild to hand one over.
+
+## Who gets in: open sign-up, closed door
+
+Anyone may create an account. Nobody is a member until a **leader or the super admin**
+approves it (`evaluateApproval`), so a stranger who signs up gets no access, no points and
+no place on the board.
+
+| Rule | Function | Denial |
+|---|---|---|
+| An unapproved account has no access at all | `evaluateAccountAccess` | `ACCOUNT_PENDING_APPROVAL` |
+| Only a leader or the super admin decides | `evaluateApproval` | `FORBIDDEN` |
+| Never your own account | `evaluateApproval` | `SELF_APPROVAL_FORBIDDEN` |
+| Never twice | `evaluateApproval` | `ALREADY_APPROVED` |
+
+An account created through an invite link arrives **already approved**: the admin who issued
+the link is the one vouching. A refused sign-up is closed like a revocation and its
+credential is banned in Supabase Auth.
+
+Sign-in tells the account holder they are waiting, but only **after** the password checked
+out - refusing earlier would answer "is this address registered?" to anyone who asked.
+
+## Guild invites (bootstrap)
+
+The original flow still exists for a fresh database, where nobody could approve or create
+anything yet: an invite token redeemed at `/register/guild` creates a guild and its first
+LEADER. `npm run invite:new` mints one from the operator's machine.
 
 | Rule | Function | Denial |
 |---|---|---|

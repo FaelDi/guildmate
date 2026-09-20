@@ -4,23 +4,38 @@ import Link from 'next/link'
 import { Fragment, useState } from 'react'
 import { applyPenaltyAction, excuseAbsenceAction } from '@/app/actions/vortex'
 import { useDictionary } from '@/components/locale-provider'
-import { classifyCombatPower, type CpTier } from '@/lib/rules'
+import { classifyCombatPower, type BuildFlags, type CpTier } from '@/lib/rules'
 import { CharacterEditModal, type EditableCharacter } from './character-edit'
 import { formatNumber, formatPct } from './format'
 import { Modal } from './modal'
 import { useActionRunner } from './use-action'
 
-export type RankingRow = EditableCharacter & {
-  userId: string
+/** What only a signed-in member sees: the roster's own numbers. */
+export type RankingDetails = {
   alts: string[]
+  level: number
+  combatPower: number
+  biosuit: string
+  build: BuildFlags
+}
+
+export type RankingRow = {
+  mainId: string
+  userId: string
+  name: string
   participation: number
   penalties: number
   balance: number
+  /** Null for a visitor who is not signed in. */
+  details: RankingDetails | null
 }
 
 /**
- * "Modulo de Jogadores". Mega and Titan members get a highlighted copy at the
- * top, like the original board; everybody keeps their real rank below.
+ * "Modulo de Jogadores". Public: anyone reads the standings. What a visitor
+ * does not get is the roster's detail - alts, level and combat power - which
+ * is what a rival would scout. Mega and Titan members get a highlighted copy
+ * at the top, like the original board, and everybody keeps their real rank
+ * below.
  */
 export function RankingTable({
   rows,
@@ -29,7 +44,8 @@ export function RankingTable({
   thresholds,
 }: {
   rows: RankingRow[]
-  meId: string
+  /** Null when nobody is signed in. */
+  meId: string | null
   isAdmin: boolean
   thresholds: { megaCpThreshold: number; titanCpThreshold: number }
 }) {
@@ -44,21 +60,32 @@ export function RankingTable({
   const tiered = rows.map((row, index) => ({
     row,
     rank: index + 1,
-    tier: classifyCombatPower(row.combatPower, thresholds),
+    tier: row.details ? classifyCombatPower(row.details.combatPower, thresholds) : ('NONE' as CpTier),
   }))
-  const megas = tiered.filter((r) => r.tier === 'MEGA').sort((a, b) => b.row.combatPower - a.row.combatPower)
-  const titans = tiered.filter((r) => r.tier === 'TITAN').sort((a, b) => b.row.combatPower - a.row.combatPower)
+  const megas = tiered
+    .filter((r) => r.tier === 'MEGA')
+    .sort((a, b) => (b.row.details?.combatPower ?? 0) - (a.row.details?.combatPower ?? 0))
+  const titans = tiered
+    .filter((r) => r.tier === 'TITAN')
+    .sort((a, b) => (b.row.details?.combatPower ?? 0) - (a.row.details?.combatPower ?? 0))
   const columns = isAdmin ? 10 : 9
+
+  const locked = (
+    <span title={t.restrictedCell} style={{ color: 'var(--text-muted)' }}>
+      🔒
+    </span>
+  )
 
   function renderRow(entry: (typeof tiered)[number], clone: boolean) {
     const { row, rank, tier } = entry
-    const mine = row.userId === meId
+    const mine = meId !== null && row.userId === meId
     const glow = tier === 'MEGA' ? 'mega' : tier === 'TITAN' ? 'tita' : ''
     const rowClass = glow ? (clone ? `${glow}-clone` : `${glow}-glow`) : ''
     const rankLabel = clone ? (tier === 'MEGA' ? '⭐' : '⚔️') : rank
+    const details = row.details
 
     return (
-      <tr key={`${clone ? 'c' : 'r'}-${row.id}`} className={rowClass}>
+      <tr key={`${clone ? 'c' : 'r'}-${row.mainId}`} className={rowClass}>
         <td style={{ color: 'var(--text-muted)', fontWeight: 'bold', fontSize: 20 }}>{rankLabel}</td>
         <td className="left">
           <span
@@ -73,22 +100,28 @@ export function RankingTable({
           </span>
         </td>
         <td className="left" style={{ color: 'var(--text-muted)', fontSize: 16 }}>
-          {row.alts.length > 0 ? row.alts.join(', ') : t.none}
+          {details ? (details.alts.length > 0 ? details.alts.join(', ') : t.none) : locked}
         </td>
         <td>
-          <span style={{ color: '#fff', fontSize: 20 }}>{row.level}</span>
+          {details ? <span style={{ color: '#fff', fontSize: 20 }}>{details.level}</span> : locked}
         </td>
         <td>
-          <span
-            style={{
-              color: 'var(--neon-cyan)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 18,
-              fontWeight: 'bold',
-            }}
-          >
-            {formatNumber(row.combatPower)}
-          </span>
+          {details ? (
+            <span
+              style={{
+                color: 'var(--neon-cyan)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 18,
+                fontWeight: 'bold',
+              }}
+            >
+              {formatNumber(details.combatPower)}
+            </span>
+          ) : (
+            <span title={t.restrictedCell} style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              {t.restricted}
+            </span>
+          )}
         </td>
         <td
           style={{
@@ -111,12 +144,21 @@ export function RankingTable({
           {row.balance} {t.pts}
         </td>
         <td>
-          {(mine || isAdmin) && !clone ? (
+          {details && (mine || isAdmin) && !clone ? (
             <button
               type="button"
               className="btn btn-outline btn-sm"
               style={{ borderColor: 'var(--neon-cyan)', color: 'var(--neon-cyan)' }}
-              onClick={() => setEditing(row)}
+              onClick={() =>
+                setEditing({
+                  id: row.mainId,
+                  name: row.name,
+                  biosuit: details.biosuit,
+                  level: details.level,
+                  combatPower: details.combatPower,
+                  build: details.build,
+                })
+              }
             >
               {t.edit}
             </button>
@@ -216,7 +258,7 @@ export function RankingTable({
         mode="stats"
         onClose={() => setEditing(null)}
         footer={
-          editing && rows.find((r) => r.id === editing.id)?.userId === meId ? (
+          editing && rows.find((r) => r.mainId === editing.id)?.userId === meId ? (
             <Link href="/profile" style={{ color: 'var(--neon-cyan)', fontSize: 15 }}>
               {t.manageAlts}
             </Link>

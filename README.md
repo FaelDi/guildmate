@@ -1,6 +1,7 @@
 # GuildMate
 
-A guild command center for RF Next players: a weekly ranking with participation and
+The BRAZUKAS command center for RF Next players - one guild's site, with room for others
+on the same install: a weekly ranking with participation and
 penalties, the classes & builds board, a loot raffle paid in points, a meme raffle and the
 boss schedule — on top of live events scored with a time-limited join code and an
 append-only point ledger. Every member has their own login; the interface is Portuguese,
@@ -10,7 +11,13 @@ The whole design answers one requirement: **it must be hard to mint points fraud
 
 ## What it does
 
-- **Guilds** with a leader and vice-leaders as admins.
+- **The board is public**: the ranking, builds, loot log, meme raffle and boss schedule
+  render for anyone. Signing in is what lets you act, and the roster's detail (alts, level,
+  combat power, builds) is only sent to members.
+- **Sign-up is open, membership is not**: anyone can register, and a leader or the super
+  admin approves before the account has any access.
+- **Guilds** with a leader and vice-leaders as admins. Only the super admin can create
+  another guild, which comes with a single-use leader link.
 - **Members** own characters, each MAIN or ALT, with a race, a biosuit and a level.
 - **Events** carry a point value and a join code that expires after an admin-chosen
   lifetime. Players redeem the code to register and earn points.

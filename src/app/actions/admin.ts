@@ -6,6 +6,8 @@ import { requireAdmin } from '@/lib/session'
 import type { RestrictionType, UserRole } from '@/db/schema'
 import {
   applyRestriction,
+  approveMember,
+  rejectMember,
   changeMemberRole,
   revokeAccessPermanently,
   revokeRestriction,
@@ -115,5 +117,43 @@ export async function changeRoleAction(
   })
 
   if (result.ok) revalidatePath('/admin')
+  return result
+}
+
+/**
+ * The sign-up queue. Sign-up is open, so these two decide who is actually in
+ * the guild; the service holds them to a leader or the super admin, and never
+ * to the caller's own account.
+ */
+export async function approveMemberAction(
+  _previous: ActionResult<null> | null,
+  formData: FormData,
+): Promise<ActionResult<null>> {
+  const result = await runAction(async () => {
+    const { actor, now } = await requireAdmin()
+    await approveMember({ actor, userId: String(formData.get('userId') ?? ''), now })
+    return null
+  })
+
+  if (result.ok) revalidatePath('/', 'layout')
+  return result
+}
+
+export async function rejectMemberAction(
+  _previous: ActionResult<null> | null,
+  formData: FormData,
+): Promise<ActionResult<null>> {
+  const result = await runAction(async () => {
+    const { actor, now } = await requireAdmin()
+    await rejectMember({
+      actor,
+      userId: String(formData.get('userId') ?? ''),
+      reason: String(formData.get('reason') ?? ''),
+      now,
+    })
+    return null
+  })
+
+  if (result.ok) revalidatePath('/', 'layout')
   return result
 }

@@ -1,28 +1,30 @@
 import { ClassesBoard } from '@/components/vx/classes-board'
 import { isGuildAdmin } from '@/lib/rules'
-import { getSettings, requireSession } from '@/lib/session'
+import { getSessionContext, getSettings } from '@/lib/session'
 import { getGuildBoard, sortForClasses } from '@/services/board'
+import { requirePrimaryGuild } from '@/services/guilds'
 
 export const dynamic = 'force-dynamic'
 
-/** "Ordem de Classes & Builds". */
+/** "Ordem de Classes & Builds". Public, with the builds themselves members-only. */
 export default async function ClassesPage() {
-  const { actor } = await requireSession()
-  const [board, settings] = await Promise.all([getGuildBoard(actor.guildId), getSettings(actor.guildId)])
+  const session = await getSessionContext()
+  const guildId = session?.actor.guildId ?? (await requirePrimaryGuild()).id
+
+  const [board, settings] = await Promise.all([getGuildBoard(guildId), getSettings(guildId)])
 
   return (
     <ClassesBoard
       rows={sortForClasses(board.rows).map((r) => ({
-        id: r.mainId,
+        mainId: r.mainId,
         userId: r.userId,
         name: r.name,
-        biosuit: r.biosuit,
-        level: r.level,
-        combatPower: r.combatPower,
-        build: r.build,
+        details: session
+          ? { biosuit: r.biosuit, level: r.level, combatPower: r.combatPower, build: r.build }
+          : null,
       }))}
-      meId={actor.id}
-      isAdmin={isGuildAdmin(actor.role)}
+      meId={session?.actor.id ?? null}
+      isAdmin={session ? isGuildAdmin(session.actor.role) : false}
       thresholds={settings}
     />
   )

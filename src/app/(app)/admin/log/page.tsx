@@ -3,12 +3,12 @@ import { db } from '@/db'
 import { auditLog, users } from '@/db/schema'
 import { Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
-import { requireAdmin } from '@/lib/session'
+import { requireAdminPage } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AuditLogPage() {
-  const { actor } = await requireAdmin()
+  const { actor } = await requireAdminPage()
   const t = await getDictionary()
 
   const entries = await db

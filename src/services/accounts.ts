@@ -21,6 +21,7 @@ import { loadRestrictions } from '@/lib/restrictions'
 import { evaluateAccountAccess, evaluateJoin } from '@/lib/rules'
 import { clearSessionCookies, readAccessToken, readRefreshToken, setSessionCookies } from '@/lib/session-cookies'
 import { adminCreateUser, signInWithPassword, signOut } from '@/lib/supabase-auth'
+import { getPrimaryGuild } from './guilds'
 import { findMemberInviteByToken } from './member-invites'
 
 const LOCKOUT_THRESHOLD = 8
@@ -40,7 +41,7 @@ const GENERIC_SIGN_IN_ERROR = 'Invalid email or password'
 export async function registerAccount(
   input: RegisterInput,
   options: { token?: string; now?: Date } = {},
-): Promise<{ userId: string }> {
+): Promise<{ userId: string; approved: boolean }> {
   const parsed = registerSchema.parse(input)
   const email = parsed.email.toLowerCase()
   const now = options.now ?? new Date()
@@ -58,14 +59,12 @@ export async function registerAccount(
   const invite = token ? await findMemberInviteByToken(token) : null
   if (token && !invite) throw new AppError('INVITE_INVALID', 'This invite link is not valid')
 
-  if (!invite && !parsed.guildSlug) {
-    // The join form always posts a slug; only a hand-built request omits both.
-    throw new AppError('GUILD_REQUIRED', 'Choose a guild to join')
-  }
-
+  // Without a link there is nothing to choose: an open sign-up joins the
+  // guild this deployment belongs to. A slug in the request is ignored, so it
+  // cannot be used to slip into another guild that happens to be open.
   const [guild] = invite
     ? await db.select().from(guilds).where(eq(guilds.id, invite.guildId)).limit(1)
-    : await db.select().from(guilds).where(eq(guilds.slug, parsed.guildSlug ?? '')).limit(1)
+    : [await getPrimaryGuild()]
   if (!guild) {
     throw new AppError('GUILD_NOT_FOUND', 'That guild does not exist or is not accepting members')
   }
@@ -118,15 +117,23 @@ export async function registerAccount(
       )
     }
 
+    // A link is an admin vouching already, so it lands approved - and a
+    // leader link is how a brand-new guild gets its first admin. An open
+    // sign-up arrives PENDING and has no access until somebody approves it.
+    const grantedRole = invite?.grantsRole === 'LEADER' ? 'LEADER' : 'MEMBER'
+    const approvedAt = invite ? now : null
+
     const [user] = await tx
       .insert(users)
       .values({
         guildId: guild.id,
         email,
         supabaseUserId: created.supabaseUserId,
-        role: 'MEMBER',
-        status: 'ACTIVE',
+        role: grantedRole,
+        status: approvedAt ? 'ACTIVE' : 'PENDING',
         isActive: true,
+        approvedAt,
+        approvedByUserId: invite?.createdByUserId ?? null,
       })
       .returning({ id: users.id })
 
@@ -164,12 +171,18 @@ export async function registerAccount(
         action: 'account.register',
         entityType: 'user',
         entityId: user.id,
-        after: { email, guildId: guild.id, characterName: parsed.characterName },
+        after: {
+          email,
+          guildId: guild.id,
+          characterName: parsed.characterName,
+          role: grantedRole,
+          approved: approvedAt !== null,
+        },
       },
       tx,
     )
 
-    return { userId: user.id }
+    return { userId: user.id, approved: approvedAt !== null }
   })
 }
 
@@ -203,7 +216,15 @@ export async function signIn(input: z.infer<typeof signInSchema>): Promise<void>
       // is registered, which turns this form into an enumeration oracle.
       throw new AppError('INVALID_CREDENTIALS', GENERIC_SIGN_IN_ERROR, 401)
     }
-    const access = evaluateAccountAccess(user, await loadRestrictions(user.id), now)
+    // `approvedAt: undefined` leaves approval out of this check: refusing here
+    // would answer "is this address registered?" before any password was
+    // typed. It is re-checked below, once the password proved the account is
+    // the caller's own.
+    const access = evaluateAccountAccess(
+      { ...user, approvedAt: undefined },
+      await loadRestrictions(user.id),
+      now,
+    )
     if (!access.ok) {
       // Do not reveal that the address exists but is banned.
       throw new AppError('INVALID_CREDENTIALS', GENERIC_SIGN_IN_ERROR, 401)
@@ -234,6 +255,16 @@ export async function signIn(input: z.infer<typeof signInSchema>): Promise<void>
   // creating one implicitly.
   if (!user) {
     throw new AppError('INVALID_CREDENTIALS', GENERIC_SIGN_IN_ERROR, 401)
+  }
+
+  // The password was right, so this is the account holder: telling them they
+  // are waiting for approval discloses nothing they do not already own.
+  if (user.approvedAt === null) {
+    throw new AppError(
+      'ACCOUNT_PENDING_APPROVAL',
+      'This account is waiting for an admin to approve it',
+      403,
+    )
   }
 
   await db

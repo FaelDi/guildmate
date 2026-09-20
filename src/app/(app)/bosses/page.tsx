@@ -3,8 +3,9 @@ import { db } from '@/db'
 import { guilds } from '@/db/schema'
 import { BossBoard, type ScheduleView } from '@/components/vx/boss-board'
 import { isGuildAdmin, type BossSchedule } from '@/lib/rules'
-import { requireSession } from '@/lib/session'
+import { getSessionContext } from '@/lib/session'
 import { listBossBoard } from '@/services/bosses'
+import { requirePrimaryGuild } from '@/services/guilds'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,16 +21,18 @@ function toView(schedule: BossSchedule): ScheduleView {
 
 /** "Escala de Bosses". Countdowns run on the client from the schedules. */
 export default async function BossesPage() {
-  const { actor, now } = await requireSession()
+  const session = await getSessionContext()
+  const now = session?.now ?? new Date()
+  const guildId = session?.actor.guildId ?? (await requirePrimaryGuild()).id
   const [board, guildRows] = await Promise.all([
-    listBossBoard(actor.guildId, now),
-    db.select({ name: guilds.name }).from(guilds).where(eq(guilds.id, actor.guildId)).limit(1),
+    listBossBoard(guildId, now),
+    db.select({ name: guilds.name }).from(guilds).where(eq(guilds.id, guildId)).limit(1),
   ])
 
   return (
     <BossBoard
       guildName={guildRows[0]?.name ?? 'Guild'}
-      isAdmin={isGuildAdmin(actor.role)}
+      isAdmin={session ? isGuildAdmin(session.actor.role) : false}
       groups={board.groups.map((g) => ({
         id: g.id,
         name: g.name,

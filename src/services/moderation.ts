@@ -20,6 +20,7 @@ import {
   authorizeModeration,
   authorizeRoleChange,
   deriveUserStatus,
+  evaluateApproval,
   type Actor,
 } from '@/lib/rules'
 import { adminSetBan } from '@/lib/supabase-auth'
@@ -92,6 +93,138 @@ export async function setMemberActive(params: {
       tx,
     )
   })
+}
+
+// ---------------------------------------------------------------------------
+// Approving a sign-up
+// ---------------------------------------------------------------------------
+
+/**
+ * Lets a pending account in. Sign-up is open, so this is the door: until a
+ * leader or the super admin approves, the account has no access at all.
+ */
+export async function approveMember(params: {
+  actor: Actor
+  userId: string
+  now: Date
+}): Promise<void> {
+  const { actor, userId, now } = params
+
+  await db.transaction(async (tx) => {
+    const target = await loadTarget(userId, tx)
+    unwrap(evaluateApproval({ actor, target }))
+
+    await tx
+      .update(users)
+      .set({ approvedAt: now, approvedByUserId: actor.id, status: 'ACTIVE', updatedAt: now })
+      .where(eq(users.id, userId))
+
+    await syncStatus(userId, now, tx)
+
+    await recordAudit(
+      {
+        guildId: target.guildId,
+        actorUserId: actor.id,
+        action: 'member.approve',
+        entityType: 'user',
+        entityId: userId,
+        before: { status: target.status },
+        after: { status: 'ACTIVE', approvedBy: actor.id },
+      },
+      tx,
+    )
+  })
+}
+
+/**
+ * Refuses a pending sign-up. The row stays (the audit trail is append-only)
+ * but the account is closed for good, exactly like a revocation - a stranger
+ * who signed up never had points or history to keep.
+ */
+export async function rejectMember(params: {
+  actor: Actor
+  userId: string
+  reason: string
+  now: Date
+}): Promise<void> {
+  const { actor, userId, now } = params
+  const reason = params.reason.trim()
+  if (reason.length < 3) {
+    throw new AppError('REASON_REQUIRED', 'A reason is required')
+  }
+
+  await db.transaction(async (tx) => {
+    const target = await loadTarget(userId, tx)
+    unwrap(evaluateApproval({ actor, target }))
+
+    await tx
+      .update(users)
+      .set({
+        status: 'DELETED',
+        isActive: false,
+        deletedAt: now,
+        deletedByUserId: actor.id,
+        updatedAt: now,
+      })
+      .where(eq(users.id, userId))
+
+    await tx
+      .update(characters)
+      .set({ isActive: false, updatedAt: now })
+      .where(eq(characters.userId, userId))
+
+    await recordAudit(
+      {
+        guildId: target.guildId,
+        actorUserId: actor.id,
+        action: 'member.reject',
+        entityType: 'user',
+        entityId: userId,
+        before: { status: target.status },
+        after: { status: 'DELETED', reason },
+      },
+      tx,
+    )
+  })
+
+  // Defence in depth: the credential itself stops issuing tokens, the same way
+  // a ban does, so a rejected sign-up cannot hold a session from before.
+  const target = await loadTarget(userId)
+  await adminSetBan(target.supabaseUserId, PERMANENT_BAN_HOURS).catch((error) => {
+    console.error('[moderation] failed to ban the rejected credential', error)
+  })
+}
+
+/** Sign-ups waiting for a decision, oldest first: the queue an admin works. */
+export async function listPendingMembers(actor: Actor) {
+  unwrap(authorizeAdminAction(actor, actor.guildId))
+
+  return db
+    .select({
+      id: users.id,
+      email: users.email,
+      createdAt: users.createdAt,
+      characterName: sql<string | null>`(
+        select ${characters.name} from ${characters}
+        where ${characters.userId} = ${users.id} and ${characters.kind} = 'MAIN'
+        limit 1
+      )`,
+      characterLevel: sql<number | null>`(
+        select ${characters.level} from ${characters}
+        where ${characters.userId} = ${users.id} and ${characters.kind} = 'MAIN'
+        limit 1
+      )`,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.guildId, actor.guildId),
+        isNull(users.approvedAt),
+        isNull(users.deletedAt),
+      ),
+    )
+    .orderBy(users.createdAt)
+    .limit(200)
 }
 
 // ---------------------------------------------------------------------------

@@ -38,6 +38,11 @@ User overrides: "show thinking" → verbose mode; "just do it" → execute immed
 
 A guild portal for RF Next players:
 
+- **One guild owns the deployment** (`PRIMARY_GUILD_SLUG`, else the oldest): its board is
+  the **public** front page and its name titles the site. Only a SUPER_ADMIN creates another
+  guild, and it comes with a single-use leader link.
+- **Sign-up is open; access is not.** A new account is `PENDING` until a LEADER or
+  SUPER_ADMIN approves it. An account created through an invite link arrives approved.
 - **Guilds** with a leader and vice-leaders as admins.
 - **Members** own **characters**, each MAIN or ALT, with a race, a biosuit and a level.
 - **Events** are created by admins with a point value and a **join code that expires** after
@@ -182,6 +187,13 @@ GOOD: "Implementation complete. Added 6 cases to tests/rules.test.ts covering th
 ## Phase 4: SECURITY REQUIREMENTS
 
 **Security is non-negotiable.**
+
+### 4.0 The public board
+
+The board pages render for visitors. Anything members-only must be withheld **server-side**
+(the page sends `null`), never merely hidden in the component - and every mutation still goes
+through an action that re-checks the session. Page-level gates use `requireSessionPage` /
+`requireAdminPage` (they redirect); actions keep `requireSession` / `requireAdmin`.
 
 ### 4.1 Object-level authorization (ownership checks) — MANDATORY
 

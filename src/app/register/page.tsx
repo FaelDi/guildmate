@@ -1,13 +1,18 @@
 import Link from 'next/link'
 import { JoinGuildForm } from '@/components/join-guild-form'
+import { Panel } from '@/components/ui'
 import { PublicHeader } from '@/components/vx/public-header'
-import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
-import { listGuildDirectory } from '@/services/accounts'
+import { getPrimaryGuild } from '@/services/guilds'
 import { peekMemberInvite } from '@/services/member-invites'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Sign-up. This deployment belongs to one guild, so there is nothing to pick:
+ * an open sign-up joins it and waits for an admin to approve. A link overrides
+ * that - it names its own guild and arrives already vouched for.
+ */
 export default async function RegisterPage({
   searchParams,
 }: {
@@ -15,88 +20,58 @@ export default async function RegisterPage({
 }) {
   const token = (await searchParams).token?.trim() ?? ''
   const t = await getDictionary()
-  const [directory, invite] = await Promise.all([
-    listGuildDirectory(),
+  const [primary, invite] = await Promise.all([
+    getPrimaryGuild(),
     token ? peekMemberInvite(token, new Date()) : null,
   ])
 
-  // A dead link falls back to the public list rather than a dead end: the
-  // guild may well be open anyway.
+  // A dead link falls back to the plain sign-up rather than a dead end.
   const liveInvite =
     invite && invite.status === 'LIVE' && invite.guildName
       ? { token, guildName: invite.guildName, seatsLeft: invite.seatsLeft }
       : null
 
-  const joinable = directory.filter(
-    (guild) => guild.isActive && (guild.joinPolicy ?? 'OPEN') === 'OPEN',
-  )
+  const guildName = liveInvite?.guildName ?? primary?.name ?? ''
 
   return (
     <main>
       <PublicHeader signInLabel={t.vx.memberAccess} joinLabel={t.auth.createAccount} />
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
 
-      <Panel
-        title={liveInvite ? `${t.recruit.joinTitle} ${liveInvite.guildName}` : t.auth.joinTitle}
-        subtitle={liveInvite ? t.recruit.joinSubtitle : t.auth.joinSubtitle}
-        tone={liveInvite ? 'ore' : 'neutral'}
-      >
-        {liveInvite && liveInvite.seatsLeft > 1 && (
-          <p className="mb-4 text-[11px] uppercase tracking-[0.14em] text-ore">
-            {liveInvite.seatsLeft} {t.recruit.seatsLeft}
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+        <Panel
+          title={`${t.recruit.joinTitle} ${guildName}`}
+          subtitle={liveInvite ? t.recruit.joinSubtitle : t.vx.joinSubtitle}
+          tone={liveInvite ? 'ore' : 'neutral'}
+        >
+          {liveInvite && liveInvite.seatsLeft > 1 && (
+            <p style={{ color: 'var(--neon-orange)', fontSize: 14, letterSpacing: 1 }}>
+              {liveInvite.seatsLeft} {t.recruit.seatsLeft}
+            </p>
+          )}
+
+          {!liveInvite && (
+            <p
+              style={{
+                border: '1px solid var(--neon-orange)',
+                background: 'rgba(255,170,0,0.08)',
+                color: 'var(--neon-orange)',
+                padding: 12,
+                fontSize: 15,
+              }}
+            >
+              {t.vx.approvalNotice}
+            </p>
+          )}
+
+          <JoinGuildForm invite={liveInvite} />
+
+          <p style={{ marginTop: 20, color: 'var(--text-muted)', fontSize: 15 }}>
+            {t.auth.alreadyMember}{' '}
+            <Link href="/login" style={{ color: 'var(--neon-cyan)' }}>
+              {t.common.signIn}
+            </Link>
           </p>
-        )}
-
-        <JoinGuildForm
-          guilds={joinable.map((guild) => ({
-            slug: guild.slug,
-            name: guild.name,
-            tag: guild.tag,
-          }))}
-          invite={liveInvite}
-        />
-
-        <p className="mt-5 text-xs text-muted">
-          {t.auth.alreadyMember}{' '}
-          <Link href="/login" className="text-ore hover:underline">
-            {t.common.signIn}
-          </Link>
-        </p>
-      </Panel>
-
-      <Panel title={t.auth.directoryTitle} subtitle={t.auth.directorySubtitle}>
-        {directory.length === 0 ? (
-          <Empty>{t.auth.directoryEmpty}</Empty>
-        ) : (
-          <Table head={t.auth.directoryHead}>
-            {directory.map((guild) => (
-              <tr key={guild.id}>
-                <td className="px-3 py-2.5">
-                  <span className="font-medium text-ink">{guild.name}</span>
-                  {guild.tag && (
-                    <span className="ml-1.5 font-mono text-[11px] text-muted">[{guild.tag}]</span>
-                  )}
-                  <div className="font-mono text-[11px] text-muted/70">{guild.slug}</div>
-                </td>
-                <td className="px-3 py-2.5">
-                  <Badge
-                    value={
-                      !guild.isActive
-                        ? 'INACTIVE'
-                        : (guild.joinPolicy ?? 'OPEN') === 'OPEN'
-                          ? 'ACTIVE'
-                          : 'INVITE_ONLY'
-                    }
-                  />
-                </td>
-                <td className="px-3 py-2.5 font-mono tabular-nums text-ink">{guild.members}</td>
-                <td className="px-3 py-2.5 font-mono tabular-nums text-refined">{guild.active}</td>
-                <td className="px-3 py-2.5 font-mono tabular-nums text-muted">{guild.suspended}</td>
-              </tr>
-            ))}
-          </Table>
-        )}
-      </Panel>
+        </Panel>
       </div>
     </main>
   )

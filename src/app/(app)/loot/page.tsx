@@ -1,18 +1,20 @@
 import { LootHistory } from '@/components/vx/loot-history'
 import { isGuildAdmin } from '@/lib/rules'
-import { requireSession } from '@/lib/session'
+import { getSessionContext } from '@/lib/session'
+import { requirePrimaryGuild } from '@/services/guilds'
 import { listLootHistory } from '@/services/loot'
 
 export const dynamic = 'force-dynamic'
 
 /** "Registro de Espolios (Loot)". The live banner itself sits above the tabs. */
 export default async function LootPage() {
-  const { actor } = await requireSession()
-  const history = await listLootHistory(actor.guildId)
+  const session = await getSessionContext()
+  const guildId = session?.actor.guildId ?? (await requirePrimaryGuild()).id
+  const history = await listLootHistory(guildId)
 
   return (
     <LootHistory
-      isAdmin={isGuildAdmin(actor.role)}
+      isAdmin={session ? isGuildAdmin(session.actor.role) : false}
       rows={history.map((row) => ({
         id: row.id,
         name: row.name,

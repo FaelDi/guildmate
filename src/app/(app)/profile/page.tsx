@@ -6,7 +6,7 @@ import { Badge, Empty, Panel, Stat, Table } from '@/components/ui'
 import { formatNumber } from '@/components/vx/format'
 import { MAX_CHARACTERS_PER_ACCOUNT } from '@/lib/rules'
 import { getDictionary } from '@/lib/i18n'
-import { requireSession } from '@/lib/session'
+import { requireSessionPage } from '@/lib/session'
 import { listRoster } from '@/services/characters'
 import { getBalance } from '@/services/points'
 
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 
 /** "Meus Personagens": the member's own roster, alts included, and their statement. */
 export default async function ProfilePage() {
-  const { actor, user } = await requireSession()
+  const { actor, user } = await requireSessionPage()
   const t = await getDictionary()
 
   const [roster, balance, ledger] = await Promise.all([

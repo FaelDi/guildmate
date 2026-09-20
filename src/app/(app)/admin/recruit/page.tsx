@@ -7,13 +7,13 @@ import {
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
 import { describeMemberInviteStatus } from '@/lib/rules'
-import { requireAdmin } from '@/lib/session'
+import { requireAdminPage } from '@/lib/session'
 import { getJoinPolicy, listMemberInvites } from '@/services/member-invites'
 
 export const dynamic = 'force-dynamic'
 
 export default async function RecruitPage() {
-  const { actor, now } = await requireAdmin()
+  const { actor, now } = await requireAdminPage()
   const [invites, policy, t, headerList] = await Promise.all([
     listMemberInvites(actor),
     getJoinPolicy(actor.guildId),

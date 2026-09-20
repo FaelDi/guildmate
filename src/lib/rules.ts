@@ -182,6 +182,13 @@ export type AccountLike = {
   isActive: boolean
   deletedAt: Date | null
   lockedUntil?: Date | null
+  /**
+   * When an admin vouched for the account. `null` means nobody has yet, so it
+   * has no access at all. `undefined` means "not part of this check" - the
+   * callers that pass an actor already hold a session, which only an approved
+   * account can have.
+   */
+  approvedAt?: Date | null
 }
 
 /**
@@ -195,6 +202,11 @@ export function evaluateAccountAccess(
 ): RuleResult<undefined> {
   if (account.deletedAt !== null || account.status === 'DELETED') {
     return deny('ACCOUNT_DELETED', 'This account no longer has access')
+  }
+
+  // Sign-up is open, so an account nobody vouched for is not a member yet.
+  if (account.approvedAt === null) {
+    return deny('ACCOUNT_PENDING_APPROVAL', 'This account is waiting for an admin to approve it')
   }
 
   const active = activeRestrictionTypes(restrictions, now)
@@ -219,6 +231,7 @@ export function deriveUserStatus(
   now: Date,
 ): UserStatus {
   if (account.deletedAt !== null) return 'DELETED'
+  if (account.approvedAt === null) return 'PENDING'
   const active = activeRestrictionTypes(restrictions, now)
   if (active.has('BAN') || active.has('SUSPENSION')) return 'BANNED'
   if (!account.isActive) return 'INACTIVE'
@@ -733,12 +746,31 @@ export function evaluateMemberInviteIssue(params: {
   guildId: string
   maxUses: number
   ttlHours: number
+  /** `LEADER` mints the first admin of a brand-new guild. Super admin only. */
+  grantsRole?: 'MEMBER' | 'LEADER'
   now: Date
-}): RuleResult<{ expiresAt: Date; maxUses: number }> {
+}): RuleResult<{ expiresAt: Date; maxUses: number; grantsRole: 'MEMBER' | 'LEADER' }> {
   const { actor, guildId, maxUses, ttlHours, now } = params
+  const grantsRole = params.grantsRole ?? 'MEMBER'
 
-  const adminCheck = authorizeAdminAction(actor, guildId)
-  if (!adminCheck.ok) return adminCheck
+  if (grantsRole === 'LEADER') {
+    // A leader link is issued for a guild the actor does not belong to - the
+    // one they just created - so it is gated on the role alone, and only the
+    // super admin has it. A guild admin able to mint these could promote
+    // anybody, anywhere, to leader.
+    if (actor.role !== 'SUPER_ADMIN') {
+      return deny('FORBIDDEN', 'Only a super admin can issue a leader link')
+    }
+    if (!actor.isActive || actor.status !== 'ACTIVE') {
+      return deny('ACCOUNT_INACTIVE', 'This account is inactive')
+    }
+    if (maxUses !== 1) {
+      return deny('INVALID_USES', 'A leader link admits exactly one person')
+    }
+  } else {
+    const adminCheck = authorizeAdminAction(actor, guildId)
+    if (!adminCheck.ok) return adminCheck
+  }
 
   if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > MEMBER_INVITE_MAX_USES) {
     return deny('INVALID_USES', `A link can admit between 1 and ${MEMBER_INVITE_MAX_USES} people`)
@@ -747,7 +779,7 @@ export function evaluateMemberInviteIssue(params: {
     return deny('INVALID_TTL', `The link can last between 1 and ${MEMBER_INVITE_MAX_TTL_HOURS} hours`)
   }
 
-  return allow({ expiresAt: new Date(now.getTime() + ttlHours * 3_600_000), maxUses })
+  return allow({ expiresAt: new Date(now.getTime() + ttlHours * 3_600_000), maxUses, grantsRole })
 }
 
 export type GuildJoinLike = {
@@ -1918,4 +1950,101 @@ export function brtDay(at: Date): { key: string; weekday: number; day: number; m
     day: brt.getUTCDate(),
     month,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Approving a sign-up
+// ---------------------------------------------------------------------------
+
+/**
+ * Anyone may create an account; nobody gets in on their own.
+ *
+ * Sign-up is deliberately open (the guild would rather people register than
+ * chase links), so the gate moved one step later: an account has no access
+ * until a leader or the super admin vouches for it. Vice-leaders cannot -
+ * letting people in decides who is in the guild, which is the leader's call.
+ *
+ * A link issued by an admin is vouching in itself, so accounts created through
+ * one arrive approved and never reach this rule.
+ */
+export function evaluateApproval(params: {
+  actor: Actor
+  target: { id: string; guildId: string; approvedAt: Date | null; deletedAt: Date | null }
+}): RuleResult<undefined> {
+  const { actor, target } = params
+
+  if (actor.guildId !== target.guildId) return deny('FORBIDDEN', 'Wrong guild')
+  if (actor.role !== 'LEADER' && actor.role !== 'SUPER_ADMIN') {
+    return deny('FORBIDDEN', 'Only a leader or the super admin can approve a sign-up')
+  }
+  if (target.id === actor.id) {
+    return deny('SELF_APPROVAL_FORBIDDEN', 'You cannot approve your own account')
+  }
+  if (target.deletedAt !== null) {
+    return deny('ACCOUNT_DELETED', 'This account no longer has access')
+  }
+  if (target.approvedAt !== null) {
+    return deny('ALREADY_APPROVED', 'This account was already approved')
+  }
+  return allow(undefined)
+}
+
+// ---------------------------------------------------------------------------
+// Creating another guild
+// ---------------------------------------------------------------------------
+
+/** Lowercase, hyphen-separated, no accents: the slug a guild is reached by. */
+export function slugify(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+}
+
+export type GuildDraft = { name: string; slug: string; tag: string | null }
+
+/**
+ * Creating a guild is not a guild-admin power.
+ *
+ * This portal belongs to one guild; another one is a second tenant on the same
+ * deployment, and a leader able to mint them could spawn tenants forever. Only
+ * the super admin, who is the operator of the install.
+ *
+ * The new guild gets no members here: it comes with a single-use link that
+ * makes whoever redeems it its LEADER (`evaluateMemberInviteIssue`), so the
+ * super admin never has to leave their own guild to set one up.
+ */
+export function evaluateGuildCreate(params: {
+  actor: Actor
+  name: string
+  tag: string | null
+}): RuleResult<GuildDraft> {
+  const { actor } = params
+
+  if (actor.role !== 'SUPER_ADMIN') {
+    return deny('FORBIDDEN', 'Only a super admin can create a guild')
+  }
+  if (!actor.isActive || actor.status !== 'ACTIVE') {
+    return deny('ACCOUNT_INACTIVE', 'This account is inactive')
+  }
+
+  const name = params.name.trim()
+  if (name.length < 2 || name.length > 60 || CONTROL_CHARACTERS.test(name)) {
+    return deny('INVALID_GUILD_NAME', 'The guild name must be between 2 and 60 characters')
+  }
+
+  const slug = slugify(name)
+  if (slug.length < 2) {
+    return deny('INVALID_GUILD_NAME', 'The guild name must contain letters or digits')
+  }
+
+  const tag = params.tag?.trim() ?? ''
+  if (tag.length > 8 || CONTROL_CHARACTERS.test(tag)) {
+    return deny('INVALID_GUILD_TAG', 'The tag can have at most 8 characters')
+  }
+
+  return allow({ name, slug, tag: tag.length > 0 ? tag : null })
 }

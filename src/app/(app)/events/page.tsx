@@ -1,14 +1,14 @@
 import { RedeemCodeForm } from '@/components/redeem-code-form'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
-import { requireSession } from '@/lib/session'
+import { requireSessionPage } from '@/lib/session'
 import { listOwnCharacters } from '@/services/accounts'
 import { listGuildEvents } from '@/services/events'
 
 export const dynamic = 'force-dynamic'
 
 export default async function EventsPage() {
-  const { actor, now } = await requireSession()
+  const { actor, now } = await requireSessionPage()
   const [events, characters] = await Promise.all([
     listGuildEvents(actor.guildId),
     listOwnCharacters(actor.id),

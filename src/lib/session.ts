@@ -2,6 +2,7 @@ import 'server-only'
 
 import { cache } from 'react'
 import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '@/db'
 import { guildSettings, userRestrictions, users, type User } from '@/db/schema'
@@ -101,6 +102,26 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
     },
   }
 })
+
+/**
+ * The gate a PAGE uses. The board is public, so a member-only screen sends a
+ * visitor to sign in rather than throwing - an exception there would render
+ * the error page instead of the login form. Actions keep using
+ * `requireSession` / `requireAdmin`, which throw and become a displayable
+ * denial.
+ */
+export async function requireSessionPage(): Promise<SessionContext> {
+  const context = await getSessionContext()
+  if (!context) redirect('/login')
+  return context
+}
+
+/** Same, for an admin screen: a member who is not an admin lands on the board. */
+export async function requireAdminPage(): Promise<SessionContext> {
+  const context = await requireSessionPage()
+  if (!isGuildAdmin(context.actor.role)) redirect('/dashboard')
+  return context
+}
 
 export async function requireSession(): Promise<SessionContext> {
   const context = await getSessionContext()

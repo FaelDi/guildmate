@@ -43,6 +43,13 @@
       "when": 1789849820051,
       "tag": "0005_vortex_modules",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789870724930,
+      "tag": "0006_approval_and_leader_links",
+      "breakpoints": true
     }
   ]
 }

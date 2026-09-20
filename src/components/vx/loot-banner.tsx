@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
   closeBannerAction,
@@ -62,7 +63,8 @@ export function LootBanner({
   staff,
 }: {
   banner: BannerView
-  me: Me
+  /** Null for a visitor who is not signed in: the banner is read-only then. */
+  me: Me | null
   settings: Settings
   staff: { userId: string; name: string }[]
 }) {
@@ -148,7 +150,12 @@ export function LootBanner({
         <button type="button" className="btn btn-outline btn-sm" onClick={() => setTutorialOpen(true)}>
           {t.howItWorks}
         </button>
-        {me.isAdmin && (
+        {me === null && (
+          <Link href="/login" className="btn btn-success btn-sm">
+            🔒 {t.signInToBet}
+          </Link>
+        )}
+        {me?.isAdmin && (
           <>
             {banner.closesAtMs !== null && (
               <button type="button" className="btn btn-warning btn-sm" onClick={() => setExtendOpen(true)}>
@@ -200,14 +207,17 @@ export function LootBanner({
             <p style={{ color: 'var(--text-muted)' }}>
               {fill(t.betCap, { max: betItem.maxPoints, pct: settings.minParticipationPct })}
             </p>
-            {me.mainName ? (
+            {me?.mainName ? (
               <>
                 <label className="field-label">{t.betAs}</label>
                 <p style={{ color: 'var(--neon-orange)', fontSize: 20, fontWeight: 700, margin: 0 }}>
                   {me.mainName}
                 </p>
                 <p style={{ color: 'var(--text-muted)' }}>
-                  {fill(t.betBalance, { n: me.balance, pct: formatPct(me.participation).replace('%', '') })}
+                  {fill(t.betBalance, {
+                    n: me.balance,
+                    pct: formatPct(me.participation).replace('%', ''),
+                  })}
                 </p>
                 <label className="field-label">{t.betPoints}</label>
                 <input
@@ -231,7 +241,7 @@ export function LootBanner({
               <button
                 type="button"
                 className="btn btn-success"
-                disabled={pending || !me.mainName}
+                disabled={pending || !me?.mainName}
                 onClick={confirmBet}
               >
                 {pending ? t.processing : t.confirm}
@@ -366,7 +376,7 @@ function BannerItem({
   onDraw,
 }: {
   item: BannerItemView
-  me: Me
+  me: Me | null
   staffSharePct: number
   accepting: boolean
   pending: boolean
@@ -384,7 +394,7 @@ function BannerItem({
     return new Map(wheel.filter((s) => s.betId).map((s) => [s.betId as string, s.weight * 100]))
   }, [item.bets, staffSharePct])
 
-  const myBet = item.bets.find((b) => b.userId === me.userId)
+  const myBet = me ? item.bets.find((b) => b.userId === me.userId) : undefined
   const color =
     item.restriction === 'MEGA'
       ? 'var(--gold-mega)'
@@ -409,7 +419,7 @@ function BannerItem({
                 key={bet.id}
                 style={{
                   background: 'rgba(0,0,0,0.5)',
-                  border: `1px solid ${bet.userId === me.userId ? 'var(--neon-green)' : 'var(--glass-border)'}`,
+                  border: `1px solid ${bet.userId === me?.userId ? 'var(--neon-green)' : 'var(--glass-border)'}`,
                   padding: '3px 8px',
                   borderRadius: 4,
                   fontSize: 14,
@@ -419,7 +429,7 @@ function BannerItem({
                 <span style={{ color: 'var(--text-muted)' }}>
                   ({(chances.get(bet.id) ?? 0).toFixed(1)}% {t.chance})
                 </span>
-                {(bet.userId === me.userId || me.isAdmin) && (
+                {me !== null && (bet.userId === me.userId || me.isAdmin) && (
                   <button
                     type="button"
                     className="btn-danger"
@@ -451,12 +461,12 @@ function BannerItem({
 
       {item.status === 'OPEN' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {accepting && !myBet && (
+          {me !== null && accepting && !myBet && (
             <button type="button" className="btn btn-success btn-sm" onClick={onBet}>
               {t.bet}
             </button>
           )}
-          {me.isAdmin && item.bets.length > 0 && (
+          {me?.isAdmin && item.bets.length > 0 && (
             <button type="button" className="btn btn-warning btn-sm" disabled={pending} onClick={onDraw}>
               {t.drawItem}
             </button>

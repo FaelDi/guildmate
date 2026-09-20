@@ -4,13 +4,13 @@ import { characters, users } from '@/db/schema'
 import { CreateEventForm, EventRowActions, GrantPointsForm } from '@/components/event-admin'
 import { Badge, Empty, Panel, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
-import { getSettings, requireAdmin } from '@/lib/session'
+import { getSettings, requireAdminPage } from '@/lib/session'
 import { listGuildEvents, listRegistrationLog } from '@/services/events'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminEventsPage() {
-  const { actor, now } = await requireAdmin()
+  const { actor, now } = await requireAdminPage()
   const t = await getDictionary()
   const settings = await getSettings(actor.guildId)
 

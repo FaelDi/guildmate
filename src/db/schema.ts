@@ -21,13 +21,20 @@ export const userRoleEnum = pgEnum('user_role', ['MEMBER', 'VICE_LEADER', 'LEADE
 
 /**
  * Account lifecycle.
+ * PENDING  - signed up, waiting for an admin to vouch for them. No access.
  * ACTIVE   - normal access.
  * INACTIVE - logically deactivated (is_active = false); data kept, no sign-in.
  * BANNED   - access denied by an active restriction of type BAN/SUSPENSION.
  * DELETED  - access permanently removed; row kept so the audit trail and the
  *            point ledger stay referentially intact.
  */
-export const userStatusEnum = pgEnum('user_status', ['ACTIVE', 'INACTIVE', 'BANNED', 'DELETED'])
+export const userStatusEnum = pgEnum('user_status', [
+  'PENDING',
+  'ACTIVE',
+  'INACTIVE',
+  'BANNED',
+  'DELETED',
+])
 
 export const characterKindEnum = pgEnum('character_kind', ['MAIN', 'ALT'])
 
@@ -208,6 +215,14 @@ export const users = pgTable(
     status: userStatusEnum('status').notNull().default('ACTIVE'),
     /** Logical deactivation toggle, independent of a punitive ban. */
     isActive: boolean('is_active').notNull().default(true),
+    /**
+     * When an admin vouched for this account. Sign-up is open, so an account
+     * that nobody approved has no access: it is how the guild keeps people who
+     * do not play with them out. An account created through an invite link is
+     * approved on the spot - the link is the vouching.
+     */
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    approvedByUserId: uuid('approved_by_user_id'),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
@@ -341,6 +356,12 @@ export const memberInvites = pgTable(
     tokenHint: text('token_hint').notNull(),
     /** Free text for the admin list: which channel, which recruit. */
     note: text('note'),
+    /**
+     * The role the link hands out. `MEMBER` for recruitment; `LEADER` only on
+     * the link a super admin mints together with a new guild, which is how
+     * that guild gets its first admin.
+     */
+    grantsRole: userRoleEnum('grants_role').notNull().default('MEMBER'),
     createdByUserId: uuid('created_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

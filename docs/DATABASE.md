@@ -32,6 +32,10 @@ without a deploy.
 An account. Stores **no password**: credentials live in Supabase Auth, referenced by
 `supabase_user_id` (unique). `email` is unique case-insensitively.
 
+`approved_at` / `approved_by_user_id`: sign-up is open, so an account with a null
+`approved_at` is `PENDING` and has no access until a leader or the super admin approves it.
+An account created through an invite link arrives approved (the link is the vouching).
+
 State columns: `role`, `status` (derived cache), `is_active` (logical deactivation),
 `deleted_at` (permanent revocation), `failed_login_count` / `locked_until` (lockout).
 
@@ -66,6 +70,9 @@ Recruitment links for an existing guild. Issued by that guild's admins, never by
 | `token_hash` / `token_lookup` / `token_hint` | Same scheme as `guild_invites`: peppered digest, blind index, last 6 characters for the list |
 | `max_uses` / `used_count` | 1 is a link for one person, N is a link for a channel. The counter moves inside the transaction that creates the account, with the row locked |
 | `revoked_at` / `revoked_by_user_id` | Kills a link that leaked |
+
+`grants_role` is `MEMBER` for recruitment links and `LEADER` only on the single-use link a
+super admin mints together with a new guild - that is how a new guild gets its first admin.
 
 ### `member_invite_redemptions`
 Who joined through which link. Unique on `(invite_id, user_id)`.

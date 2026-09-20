@@ -41,17 +41,21 @@ export async function signInAction(
 }
 
 export async function registerAction(
-  _previous: ActionResult<null> | null,
+  _previous: ActionResult<{ approved: boolean }> | null,
   formData: FormData,
-): Promise<ActionResult<null>> {
+): Promise<ActionResult<{ approved: boolean }>> {
+  const email = String(formData.get('email') ?? '')
+  const password = String(formData.get('password') ?? '')
+
   const result = await runAction(async () => {
+    let approved = false
     try {
-      await registerAccount(
+      // No guild is posted: an open sign-up joins the guild this deployment
+      // belongs to, and a recruitment token names its own.
+      const created = await registerAccount(
         {
-          email: String(formData.get('email') ?? ''),
-          password: String(formData.get('password') ?? ''),
-          // A recruitment token overrides this: the link names its own guild.
-          guildSlug: String(formData.get('guildSlug') ?? ''),
+          email,
+          password,
           characterName: String(formData.get('characterName') ?? ''),
           race: String(formData.get('race') ?? 'BELLATO') as 'BELLATO' | 'CORA' | 'ACCRETIA',
           biosuit: String(formData.get('biosuit') ?? ''),
@@ -60,18 +64,18 @@ export async function registerAction(
         },
         { token: String(formData.get('token') ?? '') },
       )
-      // Sign the new member straight in so they land on the dashboard.
-      await signIn({
-        email: String(formData.get('email') ?? ''),
-        password: String(formData.get('password') ?? ''),
-      })
+      approved = created.approved
+
+      // Only an account somebody already vouched for can hold a session; an
+      // open sign-up waits on the admin queue instead of landing signed in.
+      if (approved) await signIn({ email, password })
     } catch (error) {
       fieldError(error)
     }
-    return null
+    return { approved }
   })
 
-  if (result.ok) redirect('/dashboard')
+  if (result.ok && result.data.approved) redirect('/dashboard')
   return result
 }
 

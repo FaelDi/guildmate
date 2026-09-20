@@ -68,11 +68,30 @@ roster could redirect attribution without ever writing to the ledger. Character 
 (level, combat power, class, build) are owner-or-admin, and only an admin renames
 (`evaluateCharacterStatsUpdate`).
 
+### The board is public, acting is not
+
+The ranking, builds, loot log, meme history and boss schedule render for anyone. What a
+visitor never receives is the roster's own detail - alts, level, combat power, class and
+build - which is **withheld server-side**, not hidden with CSS: the page sends `details:
+null` and the HTML simply has no such value. Everything that changes state still goes
+through a server action that re-checks the session.
+
+### Sign-up is open, membership is not
+
+Anyone can create an account; it has no access until a leader or the super admin approves it
+(`evaluateApproval`). This is what stops people who do not play with the guild from reading
+members-only numbers by simply registering. Approval is refused on one's own account, and a
+sign-up that came through an admin's link is approved on the spot.
+
 ### Privilege escalation
 
 `authorizeModeration` and `authorizeRoleChange` enforce that an admin acts only on a
 **strictly lower rank**, never on a peer, never on themselves, and can never grant a rank at
 or above their own.
+
+A **leader link** (`member_invites.grants_role = 'LEADER'`) hands out the LEADER role, so
+only a super admin may issue one, it admits exactly one person, and it is only ever minted
+together with the new guild it belongs to.
 
 ## Anti-fraud controls
 
@@ -90,6 +109,7 @@ or above their own.
 | Admin excusing or un-penalizing themselves | `evaluateExcuse` and `evaluatePenaltyReversal` refuse the admin's own account; a penalty is reversible exactly once, for exactly its amount. |
 | Inflating combat power to unlock Mega items | Self-reported and visible to the whole guild on two boards; any admin can correct it, and every edit is audited. |
 | Admin invents an event and pays himself | Two controls, because there are two doors: `evaluateRegistration` refuses the event's creator, and `resolveEventQuorum` makes the guild quorum a floor so a quorum of 1 cannot be set. |
+| Strangers reading members-only data | Sign-up is open but approval-gated, and the public board withholds the roster's detail server-side. |
 | Colluding accounts | IP and user-agent fingerprints (hashed, never raw) recorded per registration and surfaced in the admin log. |
 
 ## Credentials and secrets

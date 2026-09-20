@@ -30,24 +30,34 @@ export const issueMemberInviteSchema = z.object({
   note: z.string().trim().max(200).optional(),
   maxUses: z.number(),
   ttlHours: z.number(),
+  /** `LEADER` only on the link that comes with a brand-new guild. */
+  grantsRole: z.enum(['MEMBER', 'LEADER']).optional(),
 })
 
 export type IssueMemberInviteInput = z.infer<typeof issueMemberInviteSchema>
 
 export async function issueMemberInvite(params: {
   actor: Actor
+  /**
+   * The guild the link admits into. Defaults to the actor's own guild; a
+   * super admin passes the guild they just created, which is the only case
+   * where these differ (and the rule gates it on the super-admin role).
+   */
+  guildId?: string
   input: IssueMemberInviteInput
   now: Date
 }): Promise<{ id: string; token: string; expiresAt: Date; maxUses: number }> {
   const { actor, now } = params
   const input = issueMemberInviteSchema.parse(params.input)
+  const guildId = params.guildId ?? actor.guildId
 
   const plan = unwrap(
     evaluateMemberInviteIssue({
       actor,
-      guildId: actor.guildId,
+      guildId,
       maxUses: input.maxUses,
       ttlHours: input.ttlHours,
+      grantsRole: input.grantsRole,
       now,
     }),
   )
@@ -57,7 +67,7 @@ export async function issueMemberInvite(params: {
   const [invite] = await db
     .insert(memberInvites)
     .values({
-      guildId: actor.guildId,
+      guildId,
       tokenHash: await hashInviteToken(token),
       tokenLookup: inviteTokenLookup(token),
       tokenHint: token.slice(-6),
@@ -65,19 +75,25 @@ export async function issueMemberInvite(params: {
       createdByUserId: actor.id,
       expiresAt: plan.expiresAt,
       maxUses: plan.maxUses,
+      grantsRole: plan.grantsRole,
     })
     .returning({ id: memberInvites.id })
 
   if (!invite) throw new AppError('INTERNAL_ERROR', 'Failed to create the invite', 500)
 
   await recordAudit({
-    guildId: actor.guildId,
+    guildId,
     actorUserId: actor.id,
-    action: 'member_invite.issue',
+    action: plan.grantsRole === 'LEADER' ? 'member_invite.issue_leader' : 'member_invite.issue',
     entityType: 'member_invite',
     entityId: invite.id,
     // The token is never written anywhere, including here.
-    after: { hint: token.slice(-6), maxUses: plan.maxUses, expiresAt: plan.expiresAt },
+    after: {
+      hint: token.slice(-6),
+      maxUses: plan.maxUses,
+      expiresAt: plan.expiresAt,
+      grantsRole: plan.grantsRole,
+    },
   })
 
   return { id: invite.id, token, expiresAt: plan.expiresAt, maxUses: plan.maxUses }

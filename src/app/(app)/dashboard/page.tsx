@@ -2,24 +2,30 @@ import { AdminLedgerPanels } from '@/components/vx/admin-ledger-panels'
 import { RankingTable } from '@/components/vx/ranking-table'
 import { getDictionary } from '@/lib/i18n'
 import { isGuildAdmin } from '@/lib/rules'
-import { getSettings, requireSession } from '@/lib/session'
+import { getSessionContext, getSettings } from '@/lib/session'
 import { getGuildBoard, sortForRanking } from '@/services/board'
+import { requirePrimaryGuild } from '@/services/guilds'
 import { listPenalties } from '@/services/penalties'
 import { listWeekExcuses } from '@/services/weeks'
 
 export const dynamic = 'force-dynamic'
 
-/** "Modulo de Jogadores": the weekly ranking. */
+/**
+ * "Modulo de Jogadores": the weekly ranking, public like the rest of the
+ * board. A visitor reads the standings; the roster's own numbers (alts, level,
+ * combat power) are only sent to a signed-in member.
+ */
 export default async function RankingPage() {
-  const { actor } = await requireSession()
-  const admin = isGuildAdmin(actor.role)
+  const session = await getSessionContext()
+  const guildId = session?.actor.guildId ?? (await requirePrimaryGuild()).id
+  const admin = session ? isGuildAdmin(session.actor.role) : false
   const t = await getDictionary()
 
   const [board, settings, excuses, penalties] = await Promise.all([
-    getGuildBoard(actor.guildId),
-    getSettings(actor.guildId),
-    admin ? listWeekExcuses(actor.guildId) : Promise.resolve([]),
-    admin ? listPenalties(actor.guildId, 30) : Promise.resolve([]),
+    getGuildBoard(guildId),
+    getSettings(guildId),
+    admin && session ? listWeekExcuses(guildId) : Promise.resolve([]),
+    admin && session ? listPenalties(guildId, 30) : Promise.resolve([]),
   ])
 
   const rows = sortForRanking(board.rows)
@@ -33,19 +39,24 @@ export default async function RankingPage() {
         </div>
         <RankingTable
           rows={rows.map((r) => ({
-            id: r.mainId,
+            mainId: r.mainId,
             userId: r.userId,
             name: r.name,
-            biosuit: r.biosuit,
-            level: r.level,
-            combatPower: r.combatPower,
-            build: r.build,
-            alts: r.alts.map((a) => a.name),
             participation: r.participation,
             penalties: r.penalties,
             balance: r.balance,
+            // Withheld from the HTML itself for a visitor, not just hidden.
+            details: session
+              ? {
+                  alts: r.alts.map((a) => a.name),
+                  level: r.level,
+                  combatPower: r.combatPower,
+                  biosuit: r.biosuit,
+                  build: r.build,
+                }
+              : null,
           }))}
-          meId={actor.id}
+          meId={session?.actor.id ?? null}
           isAdmin={admin}
           thresholds={settings}
         />

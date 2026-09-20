@@ -1,17 +1,19 @@
 import { MemberActions } from '@/components/member-actions'
+import { PendingApprovals } from '@/components/vx/pending-approvals'
 import { Badge, Empty, Panel, Stat, Table } from '@/components/ui'
 import { getDictionary } from '@/lib/i18n'
-import { requireAdmin } from '@/lib/session'
-import { listActiveRestrictions, listMembers } from '@/services/moderation'
+import { requireAdminPage } from '@/lib/session'
+import { listActiveRestrictions, listMembers, listPendingMembers } from '@/services/moderation'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminMembersPage() {
-  const { actor } = await requireAdmin()
+  const { actor } = await requireAdminPage()
   const t = await getDictionary()
-  const [members, restrictions] = await Promise.all([
+  const [members, restrictions, pending] = await Promise.all([
     listMembers(actor),
     listActiveRestrictions(actor),
+    listPendingMembers(actor),
   ])
 
   const active = members.filter((m) => m.status === 'ACTIVE').length
@@ -19,6 +21,16 @@ export default async function AdminMembersPage() {
 
   return (
     <div className="space-y-6">
+      <PendingApprovals
+        members={pending.map((member) => ({
+          id: member.id,
+          email: member.email,
+          characterName: member.characterName,
+          characterLevel: member.characterLevel,
+          createdAt: member.createdAt.toISOString(),
+        }))}
+      />
+
       <div className="grid gap-4 sm:grid-cols-4">
         <Stat label={t.admin.membersStat} value={members.length} />
         <Stat label={t.admin.activeStat} value={active} tone="refined" />

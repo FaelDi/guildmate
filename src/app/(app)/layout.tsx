@@ -1,7 +1,6 @@
-import { redirect } from 'next/navigation'
-import { eq } from 'drizzle-orm'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { db } from '@/db'
-import { guilds } from '@/db/schema'
 import { signOutAction } from '@/app/actions/auth'
 import { NavLinks } from '@/components/nav-links'
 import { LiveEventWidget } from '@/components/live-event-widget'
@@ -15,22 +14,29 @@ import { isGuildAdmin } from '@/lib/rules'
 import { getSessionContext, getSettings } from '@/lib/session'
 import { listOwnCharacters } from '@/services/accounts'
 import { getLiveEventForMember } from '@/services/events'
+import { getPrimaryGuild } from '@/services/guilds'
 import { getOpenBanner, listStaffCandidates } from '@/services/loot'
 import { getBalance } from '@/services/points'
 import { getCurrentWeek, getMemberParticipation } from '@/services/weeks'
 
-type Visibility = 'everyone' | 'admin' | 'superAdmin'
+type Visibility = 'public' | 'member' | 'admin' | 'superAdmin'
 
 type NavKey = keyof Awaited<ReturnType<typeof getDictionary>>['nav']
 
+/**
+ * The board is public, the way the guild's old dashboard was: a visitor reads
+ * the ranking, the builds, the loot log and the boss schedule without an
+ * account. Signing in is what unlocks *doing* things - registering for an
+ * event, betting, editing your own character - and the admin tabs.
+ */
 const NAV: { href: string; key: NavKey; visibleTo: Visibility }[] = [
-  { href: '/dashboard', key: 'ranking', visibleTo: 'everyone' },
-  { href: '/classes', key: 'classes', visibleTo: 'everyone' },
-  { href: '/loot', key: 'loot', visibleTo: 'everyone' },
-  { href: '/meme', key: 'meme', visibleTo: 'everyone' },
-  { href: '/bosses', key: 'bosses', visibleTo: 'everyone' },
-  { href: '/events', key: 'events', visibleTo: 'everyone' },
-  { href: '/profile', key: 'profile', visibleTo: 'everyone' },
+  { href: '/dashboard', key: 'ranking', visibleTo: 'public' },
+  { href: '/classes', key: 'classes', visibleTo: 'public' },
+  { href: '/loot', key: 'loot', visibleTo: 'public' },
+  { href: '/meme', key: 'meme', visibleTo: 'public' },
+  { href: '/bosses', key: 'bosses', visibleTo: 'public' },
+  { href: '/events', key: 'events', visibleTo: 'member' },
+  { href: '/profile', key: 'profile', visibleTo: 'member' },
   { href: '/admin', key: 'members', visibleTo: 'admin' },
   { href: '/admin/events', key: 'eventAdmin', visibleTo: 'admin' },
   { href: '/admin/recruit', key: 'recruit', visibleTo: 'admin' },
@@ -39,36 +45,39 @@ const NAV: { href: string; key: NavKey; visibleTo: Visibility }[] = [
 ]
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  // The single gate for the whole authenticated area. Individual actions
-  // re-check authorization against the row they touch; this only decides
-  // whether the shell renders at all.
   const session = await getSessionContext()
-  if (!session) redirect('/login')
+  const t = await getDictionary()
 
-  const { actor, now } = session
-  const admin = isGuildAdmin(actor.role)
+  // Signed in: their own guild. Otherwise the guild this deployment is for.
+  const guild = session
+    ? ((await db.query.guilds.findFirst({ where: (g, { eq }) => eq(g.id, session.actor.guildId) })) ??
+      null)
+    : await getPrimaryGuild()
+  if (!guild) notFound()
 
-  const [guildRows, t, liveEvent, characters, settings, week, banner, balance, participation, staff] =
+  const admin = session ? isGuildAdmin(session.actor.role) : false
+
+  const [liveEvent, characters, settings, week, banner, balance, participation, staff] =
     await Promise.all([
-      db.select().from(guilds).where(eq(guilds.id, actor.guildId)).limit(1),
-      getDictionary(),
-      getLiveEventForMember({ actor, now }),
-      listOwnCharacters(actor.id),
-      getSettings(actor.guildId),
-      getCurrentWeek(actor.guildId),
-      getOpenBanner(actor.guildId),
-      getBalance(actor.id),
-      getMemberParticipation({ guildId: actor.guildId, userId: actor.id }, db),
-      admin ? listStaffCandidates(actor.guildId) : Promise.resolve([]),
+      session ? getLiveEventForMember({ actor: session.actor, now: session.now }) : null,
+      session ? listOwnCharacters(session.actor.id) : [],
+      getSettings(guild.id),
+      getCurrentWeek(guild.id),
+      getOpenBanner(guild.id),
+      session ? getBalance(session.actor.id) : { pending: 0, available: 0 },
+      session
+        ? getMemberParticipation({ guildId: guild.id, userId: session.actor.id }, db)
+        : 0,
+      admin ? listStaffCandidates(guild.id) : [],
     ])
-  const guild = guildRows[0]
+
   const main = characters.find((c) => c.kind === 'MAIN' && c.isActive) ?? null
 
   return (
     <div id="app-root">
       <div className="header">
         <h1>
-          {guild?.name ?? 'Guild'} {t.vx.commandCenter}
+          {guild.name} {t.vx.commandCenter}
           <span className="semana-badge">
             {t.vx.week} {week.number}
           </span>
@@ -76,17 +85,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div style={{ display: 'flex', gap: 15, alignItems: 'center', flexWrap: 'wrap' }}>
           <LanguageSelector />
           {admin && <AdminToolbar hasOpenBanner={banner !== null} />}
-          <span style={{ color: 'var(--text-muted)', fontSize: 16 }}>
-            {t.vx.signedAs}{' '}
-            <b style={{ color: admin ? 'var(--neon-red)' : 'var(--neon-cyan)' }}>
-              {main?.name ?? session.user.email}
-            </b>
-          </span>
-          <form action={signOutAction}>
-            <button type="submit" className="btn btn-outline">
-              🔒 {t.vx.signOut}
-            </button>
-          </form>
+          {session ? (
+            <>
+              <span style={{ color: 'var(--text-muted)', fontSize: 16 }}>
+                {t.vx.signedAs}{' '}
+                <b style={{ color: admin ? 'var(--neon-red)' : 'var(--neon-cyan)' }}>
+                  {main?.name ?? session.user.email}
+                </b>
+              </span>
+              <form action={signOutAction}>
+                <button type="submit" className="btn btn-outline">
+                  🔒 {t.vx.signOut}
+                </button>
+              </form>
+            </>
+          ) : (
+            <Link href="/login" className="btn btn-outline">
+              🔒 {t.vx.memberAccess}
+            </Link>
+          )}
         </div>
       </div>
 
@@ -98,13 +115,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             closesAtMs: banner.closesAt?.getTime() ?? null,
             items: banner.items,
           }}
-          me={{
-            userId: actor.id,
-            isAdmin: admin,
-            mainName: main?.name ?? null,
-            balance: balance.available,
-            participation,
-          }}
+          me={
+            session
+              ? {
+                  userId: session.actor.id,
+                  isAdmin: admin,
+                  mainName: main?.name ?? null,
+                  balance: balance.available,
+                  participation,
+                }
+              : null
+          }
           settings={{
             staffSharePct: settings.lootStaffSharePct,
             minParticipationPct: settings.lootMinParticipationPct,
@@ -115,13 +136,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <NavLinks
         items={NAV.filter((item) => {
-          if (item.visibleTo === 'superAdmin') return actor.role === 'SUPER_ADMIN'
+          if (item.visibleTo === 'superAdmin') return session?.actor.role === 'SUPER_ADMIN'
           if (item.visibleTo === 'admin') return admin
+          if (item.visibleTo === 'member') return session !== null
           return true
         }).map((item) => ({
           href: item.href,
           label: t.nav[item.key],
-          admin: item.visibleTo !== 'everyone',
+          admin: item.visibleTo === 'admin' || item.visibleTo === 'superAdmin',
         }))}
       />
 
@@ -129,7 +151,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <main className="tab-content">{children}</main>
 
-      <LiveDrawWatcher />
+      {session && <LiveDrawWatcher />}
 
       {liveEvent && (
         <LiveEventWidget
