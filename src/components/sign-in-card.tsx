@@ -1,19 +1,44 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { signInAction } from '@/app/actions/auth'
-import { FormMessage, SubmitButton } from '@/components/form'
-import { useDictionary } from '@/components/locale-provider'
+import { useDictionary, useErrorMessage } from '@/components/locale-provider'
 
 /**
  * The "Acesso Restrito" card. Unlike the shared password it replaces, every
  * member signs in with their own account, so what they may change is decided
  * by who they are.
+ *
+ * Submitted as JSON from here, so a browser with our JavaScript blocked can
+ * never post it blind and end up looking at a raw server response.
  */
 export function SignInCard() {
-  const [state, formAction] = useActionState(signInAction, null)
   const t = useDictionary()
+  const translate = useErrorMessage()
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (pending) return
+
+    const form = new FormData(event.currentTarget)
+    setPending(true)
+    setError(null)
+    try {
+      const result = await signInAction({
+        email: String(form.get('email') ?? ''),
+        password: String(form.get('password') ?? ''),
+      })
+      // Success redirects server-side; only a denial comes back.
+      if (!result.ok) setError(translate(result.code, result.message))
+    } catch {
+      setError(translate('SERVICE_UNAVAILABLE', 'Connection failure.'))
+    } finally {
+      setPending(false)
+    }
+  }
 
   return (
     <div
@@ -23,7 +48,11 @@ export function SignInCard() {
       <h2 style={{ color: 'var(--neon-red)', textShadow: '0 0 10px rgba(255,0,60,0.5)' }}>{t.vx.restrictedTitle}</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: 16 }}>{t.vx.restrictedHint}</p>
 
-      <form action={formAction} style={{ display: 'grid', gap: 15, marginTop: 20 }}>
+      <form onSubmit={submit} style={{ display: 'grid', gap: 15, marginTop: 20 }}>
+        <noscript>
+          <p style={{ color: 'var(--neon-red)', fontSize: 15 }}>{t.vx.needsJavaScript}</p>
+        </noscript>
+
         <input
           name="email"
           type="email"
@@ -43,10 +72,17 @@ export function SignInCard() {
           style={{ fontSize: 22, letterSpacing: 5, borderColor: 'rgba(255,0,60,0.5)' }}
         />
 
-        <FormMessage state={state} />
+        {error && (
+          <p className="toast toast-erro show" style={{ position: 'static' }}>
+            <span className="toast-icon">✖</span>
+            <span className="toast-msg">{error}</span>
+          </p>
+        )}
 
         <div style={{ display: 'flex', gap: 15, justifyContent: 'center' }}>
-          <SubmitButton variant="danger">{t.vx.authenticate}</SubmitButton>
+          <button type="submit" className="btn btn-red" disabled={pending}>
+            {pending ? t.common.working : t.vx.authenticate}
+          </button>
         </div>
       </form>
 

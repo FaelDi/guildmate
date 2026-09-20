@@ -20,16 +20,30 @@ function fieldError(error: unknown): never {
   throw error
 }
 
-export async function signInAction(
-  _previous: ActionResult<null> | null,
-  formData: FormData,
-): Promise<ActionResult<null>> {
+const signInInputSchema = z.object({
+  email: z.string().max(254),
+  password: z.string().max(200),
+})
+
+const registerInputSchema = z.object({
+  email: z.string().max(254),
+  password: z.string().max(200),
+  characterName: z.string().max(80),
+  race: z.enum(['BELLATO', 'CORA', 'ACCRETIA']),
+  biosuit: z.string().max(80),
+  level: z.number(),
+  kind: z.enum(['MAIN', 'ALT']),
+  /** Present only when the visitor arrived through a recruitment link. */
+  token: z.string().max(200).optional(),
+})
+
+export async function signInAction(input: unknown): Promise<ActionResult<null>> {
+  const parsed = signInInputSchema.safeParse(input)
+
   const result = await runAction(async () => {
+    if (!parsed.success) throw new AppError('INVALID_CREDENTIALS', 'Invalid email or password', 401)
     try {
-      await signIn({
-        email: String(formData.get('email') ?? ''),
-        password: String(formData.get('password') ?? ''),
-      })
+      await signIn(parsed.data)
     } catch (error) {
       fieldError(error)
     }
@@ -41,34 +55,24 @@ export async function signInAction(
 }
 
 export async function registerAction(
-  _previous: ActionResult<{ approved: boolean }> | null,
-  formData: FormData,
+  input: unknown,
 ): Promise<ActionResult<{ approved: boolean }>> {
-  const email = String(formData.get('email') ?? '')
-  const password = String(formData.get('password') ?? '')
+  const parsed = registerInputSchema.safeParse(input)
 
   const result = await runAction(async () => {
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Check the form and try again')
+    const { token, ...account } = parsed.data
+
     let approved = false
     try {
       // No guild is posted: an open sign-up joins the guild this deployment
       // belongs to, and a recruitment token names its own.
-      const created = await registerAccount(
-        {
-          email,
-          password,
-          characterName: String(formData.get('characterName') ?? ''),
-          race: String(formData.get('race') ?? 'BELLATO') as 'BELLATO' | 'CORA' | 'ACCRETIA',
-          biosuit: String(formData.get('biosuit') ?? ''),
-          level: Number(formData.get('level')) || 0,
-          kind: String(formData.get('kind') ?? 'MAIN') as 'MAIN' | 'ALT',
-        },
-        { token: String(formData.get('token') ?? '') },
-      )
+      const created = await registerAccount(account, { token })
       approved = created.approved
 
       // Only an account somebody already vouched for can hold a session; an
       // open sign-up waits on the admin queue instead of landing signed in.
-      if (approved) await signIn({ email, password })
+      if (approved) await signIn({ email: account.email, password: account.password })
     } catch (error) {
       fieldError(error)
     }

@@ -283,6 +283,10 @@ export const ptBR = {
   vx: {
     commandCenter: 'Command Center',
     memberAccess: 'Acesso Membro',
+    needsJavaScript:
+      'Este painel precisa de JavaScript. Libere os scripts do site (ou desligue o bloqueador) e recarregue a página.',
+    alreadyHaveAccount:
+      'Já tem conta? Não crie outra: entre e adicione seus alts na aba Meus Personagens.',
     joinSubtitle: 'Crie sua conta e seu personagem principal. Um admin precisa aprovar antes de você entrar.',
     approvalNotice:
       '⚠️ O cadastro é aberto, mas um admin da guild precisa aprovar a sua conta antes do primeiro acesso.',
@@ -588,7 +592,8 @@ export const ptBR = {
     FORBIDDEN: 'Você não tem permissão para acessar este recurso',
     RESTRICTED: 'Você está impedido de fazer isso no momento',
     RATE_LIMITED: 'Tentativas demais. Espere um pouco.',
-    REGISTRATION_FAILED: 'Não foi possível criar esta conta',
+    REGISTRATION_FAILED:
+      'Não foi possível criar a conta com esses dados. Se este e-mail já é seu, entre na sua conta — alts se adicionam em Meus Personagens.',
     GUILD_NOT_FOUND: 'Essa guild não existe ou não está aceitando membros',
     GUILD_REQUIRED: 'Escolha uma guild para entrar',
     GUILD_EXISTS: 'Já existe uma guild com esse nome',

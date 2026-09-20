@@ -65,6 +65,10 @@ export default async function RegisterPage({
 
           <JoinGuildForm invite={liveInvite} />
 
+          <p style={{ marginTop: 16, color: 'var(--text-muted)', fontSize: 15 }}>
+            {t.vx.alreadyHaveAccount}
+          </p>
+
           <p style={{ marginTop: 20, color: 'var(--text-muted)', fontSize: 15 }}>
             {t.auth.alreadyMember}{' '}
             <Link href="/login" style={{ color: 'var(--neon-cyan)' }}>
